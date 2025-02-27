@@ -3,25 +3,27 @@ import pandas as pd
 import tempfile
 import os
 from datetime import datetime
+import logging
 
 # Import backend modules
 import backend_main_processing
 import frontend_data_loader
 import frontend_bracket_utils
+from backend_filter_apply import REVERSE_RACE_MAP
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Constants
 DATA_FOLDER = "data"
 FORM_CONTROL_PATH = "form_control_UI_data.csv"
 
-# Race Mapping
-RACE_DISPLAY_TO_CODE = {
-    "Two or More Races": "TOM",
-    "American Indian and Alaska Native": "AIAN",
-    "Black or African American": "Black",
-    "White": "White",
-    "Native Hawaiian and Other Pacific Islander": "NHOPI",
-    "Asian": "Asian"
-}
+# Use the REVERSE_RACE_MAP from backend for consistency
+RACE_DISPLAY_TO_CODE = REVERSE_RACE_MAP
 
 # AgeGroup Mapping
 AGEGROUP_DISPLAY_TO_CODE = {
@@ -31,13 +33,140 @@ AGEGROUP_DISPLAY_TO_CODE = {
     "2-Bracket":  "agegroup15"
 }
 
-# Initialize session state
-if 'filtered_data_for_download' not in st.session_state:
-    st.session_state.filtered_data_for_download = pd.DataFrame()
-if 'results_for_display' not in st.session_state:
-    st.session_state.results_for_display = []
+def validate_data_folder(data_folder: str, selected_years: list[str]) -> bool:
+    """Validate that required data files exist."""
+    if not os.path.exists(data_folder):
+        st.error(f"Data folder '{data_folder}' not found!")
+        logger.error(f"Data folder '{data_folder}' not found")
+        return False
+        
+    missing_files = []
+    for year in selected_years:
+        filename = f"{year} population.csv"
+        if not os.path.exists(os.path.join(data_folder, filename)):
+            missing_files.append(filename)
+    
+    if missing_files:
+        st.error(f"Missing data files: {', '.join(missing_files)}")
+        logger.error(f"Missing data files: {', '.join(missing_files)}")
+        return False
+    return True
+
+def check_data_consistency(df: pd.DataFrame) -> tuple[bool, str]:
+    """Check if the data meets our requirements."""
+    if df is None:
+        return False, "No data returned from processing"
+        
+    if df.empty:
+        return False, "No data matches the selected criteria"
+        
+    required_columns = ["County", "Race", "Sex", "Ethnicity", "Count", "Age", "Year"]
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        return False, f"Missing required columns: {', '.join(missing_columns)}"
+        
+    try:
+        # Verify numeric columns
+        pd.to_numeric(df["Count"])
+        pd.to_numeric(df["Age"])
+    except Exception as e:
+        return False, f"Invalid numeric data: {str(e)}"
+        
+    return True, ""
+
+@st.cache_data
+def load_form_control_data():
+    """Cache the form control data loading."""
+    try:
+        return frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
+    except Exception as e:
+        st.error(f"Error loading form control data: {str(e)}")
+        logger.error(f"Error loading form control data: {str(e)}")
+        return None
+
+def process_results(df: pd.DataFrame, year_str: str, agegroup_for_backend: str, 
+                   custom_ranges: list, selected_agegroup: str, 
+                   agegroup_map_implicit: dict) -> pd.DataFrame:
+    """Process the results dataframe according to the selected filters."""
+    if df is None or df.empty:
+        return None
+
+    try:
+        total_pop = df["Count"].sum()
+        
+        # If "All" => single row "IL Population" if no custom ranges
+        if agegroup_for_backend is None and not custom_ranges:
+            return pd.DataFrame({
+                "AgeGroup": ["IL Population"],
+                "Count": [total_pop],
+                "Percent": [100.0 if total_pop > 0 else 0.0],
+                "Year": [year_str]
+            })
+            
+        # Process custom ranges
+        if custom_ranges:
+            rows = []
+            total_sum = 0
+            for (mn, mx) in custom_ranges:
+                code_list = range(mn, mx + 1)
+                bracket_label = f"{mn}-{mx}"
+                mask = df["Age"].isin(code_list)
+                sub_sum = df.loc[mask, "Count"].sum()
+                rows.append((bracket_label, sub_sum))
+                total_sum += sub_sum
+
+            out_rows = [
+                (bexpr, cval, (cval / total_sum * 100.0) if total_sum > 0 else 0.0)
+                for bexpr, cval in rows
+            ]
+            
+            result_df = pd.DataFrame(out_rows, columns=["AgeGroup", "Count", "Percent"])
+            result_df["Year"] = year_str
+            result_df["Percent"] = result_df["Percent"].round(1)
+            return result_df
+            
+        # Process implicit brackets
+        brackets_implicit = agegroup_map_implicit.get(agegroup_for_backend, [])
+        if not brackets_implicit:
+            return pd.DataFrame({
+                "AgeGroup": [f"No bracket for {selected_agegroup}"],
+                "Count": [total_pop],
+                "Percent": [100.0 if total_pop > 0 else 0.0],
+                "Year": [year_str]
+            })
+            
+        if "Age" in df.columns:
+            rows = []
+            total_sum = 0
+            for bracket_expr in brackets_implicit:
+                bracket_expr = bracket_expr.strip()
+                mask = frontend_bracket_utils.parse_implicit_bracket(df, bracket_expr)
+                sub_sum = df.loc[mask, "Count"].sum()
+                rows.append((bracket_expr, sub_sum))
+                total_sum += sub_sum
+                
+            out_rows = [
+                (bexpr, cval, (cval / total_sum * 100.0) if total_sum > 0 else 0.0)
+                for bexpr, cval in rows
+            ]
+            
+            result_df = pd.DataFrame(out_rows, columns=["AgeGroup", "Count", "Percent"])
+            result_df["Year"] = year_str
+            result_df["Percent"] = result_df["Percent"].round(1)
+            return result_df
+            
+    except Exception as e:
+        logger.error(f"Error processing results: {str(e)}")
+        st.error(f"Error processing results: {str(e)}")
+        return None
 
 def main():
+    # Initialize session state
+    if 'filtered_data_for_download' not in st.session_state:
+        st.session_state.filtered_data_for_download = pd.DataFrame()
+    if 'results_for_display' not in st.session_state:
+        st.session_state.results_for_display = []
+
     # Page Config
     st.set_page_config(
         page_title="Illinois Census Data Form",
@@ -48,13 +177,18 @@ def main():
     # Title
     st.title("Illinois Census Data Form")
     
-    # Load form control data
+    # Load form control data with caching
+    form_data = load_form_control_data()
+    if form_data is None:
+        st.error("Failed to load form control data. Please check the logs.")
+        return
+        
     (years_list,
      agegroups_list_raw,
      races_list_raw,
      counties_map,
      agegroup_map_explicit,
-     agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
+     agegroup_map_implicit) = form_data
     
     # Create columns for layout
     col1, col2, col3 = st.columns(3)
@@ -63,14 +197,12 @@ def main():
     with col1:
         st.subheader("Selection Controls")
         
-        # Year Selection (multiselect instead of listbox)
         selected_years = st.multiselect(
             "Year Selection:",
             options=years_list,
             default=[years_list[0]] if years_list else None
         )
         
-        # Counties Selection
         county_options = ["All"] + sorted(counties_map.keys())
         selected_counties = st.multiselect(
             "Select Counties:",
@@ -81,7 +213,6 @@ def main():
     with col2:
         st.subheader("Demographic Filters")
         
-        # Age Group Selection
         agegroup_display_list = list(AGEGROUP_DISPLAY_TO_CODE.keys())
         selected_agegroup = st.selectbox(
             "Age Group:",
@@ -89,7 +220,6 @@ def main():
             index=0
         )
         
-        # Show selected age brackets
         if selected_agegroup != "All":
             agegroup_code = AGEGROUP_DISPLAY_TO_CODE.get(selected_agegroup, "All")
             brackets_implicit = agegroup_map_implicit.get(agegroup_code, [])
@@ -98,7 +228,6 @@ def main():
                 for expr in brackets_implicit:
                     st.write(f"- {expr}")
         
-        # Race Selection
         race_display_list = ["All"] + [k for k in RACE_DISPLAY_TO_CODE.keys()]
         selected_race = st.selectbox(
             "Race:",
@@ -106,21 +235,18 @@ def main():
             index=0
         )
         
-        # Ethnicity Selection
         selected_ethnicity = st.radio(
             "Ethnicity:",
             options=["All", "Hispanic", "Not Hispanic"],
             horizontal=True
         )
         
-        # Sex Selection
         selected_sex = st.radio(
             "Sex:",
             options=["All", "Male", "Female"],
             horizontal=True
         )
         
-        # Region Selection
         selected_region = st.radio(
             "Regional Counties:",
             options=["None", "Collar Counties", "Urban Counties", "Rural Counties"],
@@ -149,44 +275,55 @@ def main():
         if not selected_years:
             st.warning("Please select at least one year.")
             return
+            
+        if not validate_data_folder(DATA_FOLDER, selected_years):
+            return
         
-        # Convert Race display to code
         selected_race_code = "All" if selected_race == "All" else RACE_DISPLAY_TO_CODE.get(selected_race, selected_race)
-        
-        # Convert AgeGroup display to code
         selected_agegroup_code = AGEGROUP_DISPLAY_TO_CODE.get(selected_agegroup, None)
         agegroup_for_backend = None if selected_agegroup_code == "All" else selected_agegroup_code
-        
-        counties_str = ", ".join(selected_counties) if selected_counties else "No counties selected."
         
         combined_frames = []
         st.session_state.results_for_display = []
         
-        years_title = f"({selected_years[0]})" if len(selected_years) == 1 else f"({', '.join(selected_years)})"
-        
         with st.spinner("Generating report..."):
-            for year_str in selected_years:
-                df = backend_main_processing.process_population_data(
-                    data_folder=DATA_FOLDER,
-                    agegroup_map_explicit=agegroup_map_explicit,
-                    counties_map=counties_map,
-                    selected_years=[year_str],
-                    selected_counties=selected_counties,
-                    selected_race=selected_race_code,
-                    selected_ethnicity=selected_ethnicity,
-                    selected_sex=selected_sex,
-                    selected_region=selected_region,
-                    selected_agegroup=agegroup_for_backend,
-                    custom_age_ranges=custom_ranges
-                )
-                
-                # Process results similar to Tkinter version
-                # ... [Result processing logic remains the same]
-                
-                if df is not None and not df.empty:
-                    st.write(f"Results for {year_str}:")
-                    st.dataframe(df)
-                    combined_frames.append(df)
+            try:
+                for year_str in selected_years:
+                    df = backend_main_processing.process_population_data(
+                        data_folder=DATA_FOLDER,
+                        agegroup_map_explicit=agegroup_map_explicit,
+                        counties_map=counties_map,
+                        selected_years=[year_str],
+                        selected_counties=selected_counties,
+                        selected_race=selected_race_code,
+                        selected_ethnicity=selected_ethnicity,
+                        selected_sex=selected_sex,
+                        selected_region=selected_region,
+                        selected_agegroup=agegroup_for_backend,
+                        custom_age_ranges=custom_ranges
+                    )
+                    
+                    # Validate data consistency
+                    is_valid, error_msg = check_data_consistency(df)
+                    if not is_valid:
+                        st.error(f"Data validation failed for {year_str}: {error_msg}")
+                        continue
+                    
+                    # Process results
+                    processed_df = process_results(
+                        df, year_str, agegroup_for_backend, custom_ranges,
+                        selected_agegroup, agegroup_map_implicit
+                    )
+                    
+                    if processed_df is not None and not processed_df.empty:
+                        st.write(f"Results for {year_str}:")
+                        st.dataframe(processed_df)
+                        combined_frames.append(processed_df)
+                        
+            except Exception as e:
+                st.error(f"Error processing data: {str(e)}")
+                logger.error(f"Error processing data: {str(e)}")
+                return
         
         if combined_frames:
             st.session_state.filtered_data_for_download = pd.concat(combined_frames, ignore_index=True)
@@ -204,17 +341,26 @@ def main():
                 )
             
             with col2:
-                excel_buffer = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
-                with pd.ExcelWriter(excel_buffer.name) as writer:
-                    for year_str, df in zip(selected_years, combined_frames):
-                        df.to_excel(writer, sheet_name=str(year_str), index=False)
-                st.download_button(
-                    "Download Excel",
-                    open(excel_buffer.name, 'rb').read(),
-                    "census_data.xlsx",
-                    key='download-excel'
-                )
-                
+                try:
+                    excel_buffer = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                    with pd.ExcelWriter(excel_buffer.name) as writer:
+                        for year_str, df in zip(selected_years, combined_frames):
+                            df.to_excel(writer, sheet_name=str(year_str), index=False)
+                    st.download_button(
+                        "Download Excel",
+                        open(excel_buffer.name, 'rb').read(),
+                        "census_data.xlsx",
+                        key='download-excel'
+                    )
+                except Exception as e:
+                    st.error(f"Error creating Excel file: {str(e)}")
+                    logger.error(f"Error creating Excel file: {str(e)}")
+                finally:
+                    if 'excel_buffer' in locals():
+                        try:
+                            os.unlink(excel_buffer.name)
+                        except:
+                            pass
         else:
             st.warning("No data found for the selected filters.")
     
