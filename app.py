@@ -301,8 +301,8 @@ def main():
         # Title section in the middle column.
         st.markdown("""
         <div class="title">
-            <h1>Illinois Census Data Form</h1>
-            <p>A Streamlit web interface for selecting census data filters, generating population reports, and downloading results.</p>
+            <h1>Illinois Population | U.S. Census Data | 2000 - 2023</h1>
+            <p>Users can utilize this tool to query  CC-EST2000-2023-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and Hispanic origin.</p>
         </div>
         """, unsafe_allow_html=True)
         
