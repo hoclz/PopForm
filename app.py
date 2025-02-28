@@ -81,7 +81,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stAppView"] {
 /* Side columns filled with an RGB color */
 .side-column {
     background-color: rgb(242,242,242);
-    height: 100vh;
+    height: 200vh;
 }
 
 /* Main content container (white background) in center column */
