@@ -59,7 +59,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stAppView"] {
 
 /* Subheaders styling */
 .stMarkdown h2, .stMarkdown h3 {
-    color: #2c3e50 !important;  /* match your --primary-color if you like */
+    color: #2c3e50 !important;
     font-family: "Segoe UI", sans-serif;
     margin-bottom: 0.5rem;
 }
@@ -371,31 +371,31 @@ def main():
                 st.write("Use these filters to further refine the data:")
                 c_reg, c_eth, c_sex = st.columns(3)
                 with c_reg:
-                    st.write("**Region**")
                     region_options = ["None", "Collar Counties", "Urban Counties", "Rural Counties"]
                     selected_region = st.radio(
-                        label="",
+                        "Region",
                         options=region_options,
                         index=0,
-                        help="Filter by a predefined region grouping"
+                        help="Filter by a predefined region grouping",
+                        label_visibility="collapsed"
                     )
                 with c_eth:
-                    st.write("**Ethnicity**")
                     ethnicity_options = ["All", "Hispanic", "Not Hispanic"]
                     selected_ethnicity = st.radio(
-                        label="",
+                        "Ethnicity",
                         options=ethnicity_options,
                         index=0,
-                        help="Filter by Hispanic or Not Hispanic"
+                        help="Filter by Hispanic or Not Hispanic",
+                        label_visibility="collapsed"
                     )
                 with c_sex:
-                    st.write("**Sex**")
                     sex_options = ["All", "Male", "Female"]
                     selected_sex = st.radio(
-                        label="",
+                        "Sex",
                         options=sex_options,
                         index=0,
-                        help="Filter by sex"
+                        help="Filter by sex",
+                        label_visibility="collapsed"
                     )
 
         # -- COL3: Custom Age Ranges
