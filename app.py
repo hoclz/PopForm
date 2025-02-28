@@ -7,32 +7,41 @@ import os
 # Streamlit Page Config
 st.set_page_config(
     page_title="Illinois Census Data Form",
-    layout="wide"
+    layout="wide"  # Keep "wide" so our custom CSS isn't overridden
 )
 
 # ------------------------------------------------------------------------
-# Custom CSS for Unified Color Scheme & Layout
+# Revised CSS: narrower container + left/right borders
 st.markdown("""
 <style>
-:root {
-    --primary-color: #2c3e50; /* Unified accent color */
-    --secondary-color: #34495e; 
-    --light-bg-color: #f9fffa; 
-    --border-color: #eee;
-    --text-color: #444;
+/* Optional: Give the entire page a light gray background */
+html, body, [data-testid="stAppViewContainer"], [data-testid="stAppView"] {
+    background-color: #f2f2f2; /* Adjust color as desired */
 }
 
-/* Overall page container */
+/* Narrow the main content, add left/right borders, etc. */
 .main .block-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 1rem 2rem;
+    /* Limit container width (e.g. 1000px). Adjust to your preference. */
+    max-width: 1000px !important;
+    margin: 2rem auto !important;
+
+    /* Add left and right “divider” borders */
+    border-left: 10px solid #ccc;
+    border-right: 10px solid #ccc;
+    background-color: #fff;
+
+    /* Internal padding so content doesn't touch borders */
+    padding: 2rem !important;
+
+    /* Optional: Slight rounding or shadow for a card-like look */
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 /* Title container styling */
 .title-container {
     text-align: center;
-    background-color: var(--primary-color);
+    background-color: #2c3e50;
     padding: 20px;
     border-radius: 6px;
     margin-bottom: 1rem;
@@ -50,7 +59,7 @@ st.markdown("""
 
 /* Subheaders styling */
 .stMarkdown h2, .stMarkdown h3 {
-    color: var(--primary-color) !important;
+    color: #2c3e50 !important;  /* match your --primary-color if you like */
     font-family: "Segoe UI", sans-serif;
     margin-bottom: 0.5rem;
 }
@@ -58,12 +67,12 @@ st.markdown("""
 /* Labels and text */
 .stMarkdown label, .stRadio label, .stSelectbox label, .stMultiSelect label {
     font-weight: 600 !important;
-    color: var(--text-color) !important;
+    color: #444 !important;
 }
 
 /* Buttons */
 .stButton button {
-    background-color: var(--primary-color) !important;
+    background-color: #2c3e50 !important; /* primary color */
     color: white !important;
     border-radius: 5px !important;
     font-size: 15px !important;
@@ -73,7 +82,7 @@ st.markdown("""
     margin-top: 0.5rem;
 }
 .stButton button:hover {
-    background-color: var(--secondary-color) !important;
+    background-color: #34495e !important; /* secondary color */
     color: white !important;
 }
 
@@ -90,11 +99,11 @@ st.markdown("""
 
 /* Container for the final report */
 .report-container {
-    background-color: var(--light-bg-color);
+    background-color: #f9fffa;
     padding: 1rem;
     border-radius: 5px;
     margin-top: 1rem;
-    border: 1px solid var(--border-color);
+    border: 1px solid #eee;
 }
 
 /* Extra spacing between sections */
@@ -103,7 +112,7 @@ st.markdown("""
     margin-bottom: 1rem;
     border: none;
     height: 1px;
-    background: var(--border-color);
+    background: #eee;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -549,12 +558,7 @@ def main():
             # Display Data
             with st.container():
                 st.markdown('<div class="report-container">', unsafe_allow_html=True)
-                # Option 1: Simple DataFrame
                 st.dataframe(final_df, use_container_width=True)
-
-                # Option 2 (commented): Interactive Data Editor with sorting
-                # st.data_editor(final_df, use_container_width=True, num_rows="dynamic")
-
                 st.markdown('</div>', unsafe_allow_html=True)
 
     # ---------- Download Button ----------
