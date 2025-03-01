@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------
-# Custom CSS
+# Custom CSS (added .middle-row for blue-filled rows)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap');
@@ -58,10 +58,10 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stAppView"] {
 
 /* Custom button sizing using unique IDs */
 #btn1 > button, #btn2 > button, #btn3 > button, #btn4 > button {
-    margin-top: 10px;       /* adjust top margin */
-    margin-left: 20px;      /* adjust left margin */
-    width: 150px;           /* adjust width */
-    height: 40px;           /* adjust height */
+    margin-top: 10px;
+    margin-left: 20px;
+    width: 150px;
+    height: 40px;
 }
 
 .stButton button {
@@ -80,8 +80,9 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stAppView"] {
 
 /* Side columns filled with an RGB color */
 .side-column {
-    background-color: rgb(242,242,242);
-    height: 1000vh;
+    background-color: rgb(0, 123, 255);
+    min-height: 1000vh;
+    height: auto;
 }
 
 /* Main content container (white background) in center column */
@@ -91,6 +92,14 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stAppView"] {
     padding: 2rem 3rem;
     border-radius: 0 0 8px 8px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Blue-filled row */
+.middle-row {
+    background-color: dodgerblue; /* adjust as desired */
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
 }
 
 /* Section headings */
@@ -187,10 +196,7 @@ def combine_codes_to_label(codes: list[int]) -> str:
             parts = bracket_str.split("-")
             try:
                 start = int(parts[0])
-                if parts[1].endswith("+"):
-                    end = 999
-                else:
-                    end = int(parts[1])
+                end = int(parts[1].replace("+", "")) if parts[1].endswith("+") else int(parts[1])
                 low_vals.append(start)
                 high_vals.append(end)
             except:
@@ -298,15 +304,16 @@ def main():
         # Main content container in center column.
         st.markdown("<div class='main-content'>", unsafe_allow_html=True)
         
-        # Title section in the middle column.
+        #############################
+        # Blue Row 1: Title and Button Row
+        st.markdown("<div class='middle-row'>", unsafe_allow_html=True)
         st.markdown("""
         <div class="title">
             <h1>Illinois Population | U.S. Census Data | 2000 - 2023</h1>
-            <p>Users can utilize this tool to query  CC-EST2000-2023-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and Hispanic origin.</p>
+            <p>Users can utilize this tool to query CC-EST2000-2023-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and Hispanic origin.</p>
         </div>
         """, unsafe_allow_html=True)
         
-        # Button row (wrapped in the center column)
         btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
         with btn_col1:
             st.markdown('<div id="btn1">', unsafe_allow_html=True)
@@ -324,6 +331,12 @@ def main():
             st.markdown('<div id="btn4">', unsafe_allow_html=True)
             download_button = st.button("Download Output")
             st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        #############################
+        
+        #############################
+        # Blue Row 2: Filters & Advanced Demographics
+        st.markdown("<div class='middle-row'>", unsafe_allow_html=True)
         
         # Load form-control data
         (years_list,
@@ -426,10 +439,19 @@ def main():
                     index=0,
                     help="Filter by sex"
                 )
+        st.markdown("</div>", unsafe_allow_html=True)
+        #############################
         
-        # CUSTOM AGE RANGES
+        #############################
+        # Blue Row 3: New Blue Row Above "Custom Age Ranges"
+        st.markdown("<div class='middle-row'>", unsafe_allow_html=True)
         st.subheader("Custom Age Ranges")
         st.caption("Valid Age codes: 1..18. These override the Age Group selection.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        #############################
+        
+        #############################
+        # Custom Age Ranges Inputs (not in a blue row)
         custom_age_ranges_inputs = []
         age_options = [""] + [str(i) for i in range(1, 19)]
         for i in range(1, 6):
@@ -457,18 +479,12 @@ def main():
                     label_visibility="collapsed"
                 )
             custom_age_ranges_inputs.append((min_val, max_val))
-        
         st.markdown("<hr class='section-separator'/>", unsafe_allow_html=True)
+        #############################
         
-        # CURRENTLY SELECTED FILTERS
-        with st.expander("Currently Selected Filters", expanded=False):
-            st.write(f"**Years:** {', '.join(selected_years) if selected_years else 'None'}")
-            st.write(f"**Counties:** {', '.join(selected_counties) if selected_counties else 'None'}")
-            st.write(f"**Age Group:** {selected_agegroup_display}")
-            st.write(f"**Race:** {selected_race_display}")
-            st.write(f"**Region:** {selected_region if 'selected_region' in locals() else 'None'}")
-            st.write(f"**Ethnicity:** {selected_ethnicity if 'selected_ethnicity' in locals() else 'All'}")
-            st.write(f"**Sex:** {selected_sex if 'selected_sex' in locals() else 'All'}")
+        #############################
+        # Blue Row 4: Report & Download Section
+        st.markdown("<div class='middle-row'>", unsafe_allow_html=True)
         
         # -------------- BUTTON LOGIC --------------
         if clear_report_button:
@@ -587,8 +603,19 @@ def main():
                     file_name="population_report.csv",
                     mime="text/csv",
                 )
-        
         st.markdown("</div>", unsafe_allow_html=True)
+        #############################
+        
+        # Add "Currently Selected Filters" expander below the 4th blue row (not in a blue row)
+        with st.expander("Currently Selected Filters", expanded=False):
+            st.write(f"**Years:** {', '.join(selected_years) if selected_years else 'None'}")
+            st.write(f"**Counties:** {', '.join(selected_counties) if selected_counties else 'None'}")
+            st.write(f"**Age Group:** {selected_agegroup_display}")
+            st.write(f"**Race:** {selected_race_display}")
+            st.write(f"**Region:** {selected_region if 'selected_region' in locals() else 'None'}")
+            st.write(f"**Ethnicity:** {selected_ethnicity if 'selected_ethnicity' in locals() else 'All'}")
+        
+        st.markdown("</div>", unsafe_allow_html=True)  # End main-content
 
 if __name__ == "__main__":
     main()
