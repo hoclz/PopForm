@@ -2,6 +2,69 @@ import streamlit as st
 import pandas as pd
 import openpyxl  # For Excel operations
 import os
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import io, base64
+
+# ------------------------------------------------------------------------
+# Setup for Illinois Outline
+LINE_COLOR = "#ADD8E6"  # choose a color for the outline
+ILLINOIS_GEOJSON_URL = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/illinois-counties.geojson"
+
+# Load the Illinois counties GeoJSON and compute the state boundary
+illinois = gpd.read_file(ILLINOIS_GEOJSON_URL).to_crs(epsg=26971)
+state_boundary = illinois.dissolve()
+
+def add_illinois_outline(ax, boundary_gdf, position, zoom, zoom_factor=1.1):
+    """
+    Adds a zoomed inset of the Illinois outline to the given axis.
+    
+    Parameters:
+    - ax: The parent axes.
+    - boundary_gdf: A GeoDataFrame with the Illinois boundary.
+    - position: [x, y] coordinates (as fractions of the parent axes) for the inset.
+    - zoom: The width and height of the inset axes (as fractions of the parent axes).
+    - zoom_factor: A multiplier (0 < zoom_factor <= 1) to determine the extent of the geometry to show.
+                   Lower values zoom in more.
+    """
+    # Create an inset axis within ax
+    inset_ax = ax.inset_axes([position[0], position[1], zoom, zoom])
+    
+    # Plot the boundary with increased linewidth and a custom color
+    boundary_gdf.boundary.plot(ax=inset_ax, linewidth=10, edgecolor=LINE_COLOR)
+    
+    # Get the total bounds of the geometry (xmin, ymin, xmax, ymax)
+    xmin, ymin, xmax, ymax = boundary_gdf.total_bounds
+    # Compute the center of the geometry
+    x_center = (xmin + xmax) / 2
+    y_center = (ymin + ymax) / 2
+    # Compute width and height based on the zoom_factor
+    width = (xmax - xmin) * zoom_factor
+    height = (ymax - ymin) * zoom_factor
+    # Set the limits of the inset axis to "zoom in" on the center
+    inset_ax.set_xlim(x_center - width/2, x_center + width/2)
+    inset_ax.set_ylim(y_center - height/2, y_center + height/2)
+    inset_ax.axis('off')
+
+
+def get_illinois_outline_image():
+    """
+    Generates a small matplotlib figure containing the Illinois outline,
+    saves it to a PNG in memory, and returns a base64-encoded string.
+    """
+    fig, ax = plt.subplots(figsize=(4, 4))
+    # Draw the outline on the entire figure (using almost full inset space)
+    add_illinois_outline(ax, state_boundary, (0.2, 0.1), 0.8)
+    ax.axis('off')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    return img_base64
+
+# Generate the base64 image string for the Illinois outline
+outline_img_base64 = get_illinois_outline_image()
 
 # ------------------------------------------------------------------------
 # Streamlit Page Config
@@ -255,7 +318,7 @@ def aggregate_age_with_brackets(
         rows, total_sum = [], 0
         for (mn, mx) in custom_ranges:
             code_list = range(mn, mx+1)
-            bracket_label = combine_codes_to_label(code_list)
+            bracket_label = combine_codes_to_label(list(code_list))
             mask = df_source["Age"].isin(code_list)
             sub_sum = df_source.loc[mask, "Count"].sum()
             rows.append((bracket_label, sub_sum))
@@ -282,7 +345,6 @@ def aggregate_age_with_brackets(
     rows, total_sum = [], 0
     for bracket_expr in brackets_implicit:
         bracket_expr = bracket_expr.strip()
-        # If you have a specialized function to parse bracket expressions:
         mask = frontend_bracket_utils.parse_implicit_bracket(df_source, bracket_expr)
         sub_sum = df_source.loc[mask, "Count"].sum()
         rows.append((bracket_expr, sub_sum))
@@ -353,9 +415,24 @@ def rerun():
     raise RerunException(RerunData(None))
 
 # ------------------------------------------------------------------------
+# HERO BANNER with Illinois Outline
+# Here we insert the outline image (as a base64-encoded PNG) before the word "Illinois" in the title.
+hero_html = f"""
+<div class='hero-banner'>
+    <h1 style="width: 100%; text-align: center; font-size: 3rem; color: #87CEFA;">
+        <img src="data:image/png;base64,{outline_img_base64}" style="vertical-align: middle; margin-right: 5px; height: 80px;" />
+        Illinois Population | U.S. Census Data | 2000 - 2023
+    </h1>
+    <p style="font-size: 1.2rem; color: #ADD8E6;">
+        Users can utilize this tool to query CC-EST2000-2023-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and hispanic origin.<br>
+    </p>
+</div>
+"""
+
+# ------------------------------------------------------------------------
 def main():
     # Create three columns with [1,4,1] ratio
-    col_left, col_center, col_right = st.columns([2,3,2])
+    col_left, col_center, col_right = st.columns([2, 3, 2])
 
     # Fill color on the left column
     with col_left:
@@ -370,14 +447,8 @@ def main():
         # Outer frame start
         st.markdown("<div class='outer-frame'>", unsafe_allow_html=True)
 
-        # Hero banner
-        st.markdown("<div class='hero-banner'>", unsafe_allow_html=True)
-        st.markdown("""
-            <h1 style="width: 100%; text-align: center;">Illinois Population | U.S. Census Data | 2000 - 2023</h1>
-            <p>Users can utilize this tool to query CC-EST2000-2023-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and hispanic origin.<br>
-            </p>
-        """, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Insert the Hero Banner with the Illinois outline image
+        st.markdown(hero_html, unsafe_allow_html=True)
 
         # Buttons row
         st.markdown("<div class='button-row'>", unsafe_allow_html=True)
@@ -541,7 +612,6 @@ def main():
             st.write(f"**Race Filter:** {selected_race_display}")
             st.write(f"**Region:** {selected_region}")
             st.write(f"**Ethnicity:** {selected_ethnicity}")
-            st.write(f"**Sex:** {selected_sex}")
             st.write(f"**Group By:** {grouping_var if grouping_var else '(None)'}")
 
         # -- Generate report logic --
@@ -689,8 +759,6 @@ def parse_implicit_bracket(df_source, bracket_expr):
     """
     Placeholder or pass-through logic for bracket expressions if your real code is in:
     frontend_bracket_utils.parse_implicit_bracket(...).
-    If you're calling that directly, you can remove this function
-    and just do: mask = frontend_bracket_utils.parse_implicit_bracket(df_source, bracket_expr).
     """
     return frontend_bracket_utils.parse_implicit_bracket(df_source, bracket_expr)
 
