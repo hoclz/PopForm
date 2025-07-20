@@ -643,6 +643,7 @@ def main():
             "https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/",
             "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/",
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/",
+            "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/",
             "RELEASE SCHEDULE: https://www.census.gov/programs-surveys/popest/about/schedule.html"
         ]
         for link in links_data:
