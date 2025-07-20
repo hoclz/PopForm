@@ -421,10 +421,10 @@ hero_html = f"""
 <div class='hero-banner'>
     <h1 style="width: 100%; text-align: center; font-size: 3rem; color: #87CEFA;">
         <img src="data:image/png;base64,{outline_img_base64}" style="vertical-align: middle; margin-right: 5px; height: 80px;" />
-        Illinois Population | U.S. Census Data | 2000 - 2023
+        Illinois Population | U.S. Census Data | 2000 - 2024
     </h1>
     <p style="font-size: 1.2rem; color: #ADD8E6;">
-        Users can utilize this tool to query CC-EST2000-2023-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and hispanic origin.<br>
+        Users can utilize this tool to query CC-EST2000-2024-ALLDATA-[ST-FIPS] annual county-level population estimates broken down by age, sex, race, and hispanic origin.<br>
     </p>
 </div>
 """
@@ -475,6 +475,7 @@ def main():
                 - [2000-2010 Intercensal County](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
                 - [2010-2020 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/)
                 - [2020-2023 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/)
+                - [2020-2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
                 - [RELEASE SCHEDULE](https://www.census.gov/programs-surveys/popest/about/schedule.html)
                 """)
 
