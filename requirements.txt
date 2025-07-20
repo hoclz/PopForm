@@ -4,3 +4,4 @@ numpy
 openpyxl
 geopandas
 matplotlib
+ttkbootstrap
