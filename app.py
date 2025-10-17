@@ -44,39 +44,6 @@ st.markdown("""
         text-align: center;
         border: 1px solid #90caf9;
     }
-    .metric-value {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #0d47a1;
-        margin: 0.5rem 0;
-    }
-    .metric-label {
-        font-size: 1rem;
-        color: #546e7a;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 500;
-    }
-    .illinois-blue {
-        color: #0d47a1;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 1rem;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: #e3f2fd;
-        border-radius: 10px 10px 0px 0px;
-        gap: 1rem;
-        padding: 10px 20px;
-        font-weight: 600;
-        color: #0d47a1;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background-color: #1976d2;
-        color: white;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -89,10 +56,6 @@ try:
 except ImportError as e:
     st.error(f"Error importing backend modules: {e}")
     st.info("Please ensure all backend modules are available")
-    # Create dummy functions for demonstration
-    def dummy_load_data(*args):
-        return [], [], [], {}, {}, {}
-    frontend_data_loader.load_form_control_data = dummy_load_data
 
 # ------------------------------------------------------------------------
 # Path configurations
@@ -163,7 +126,7 @@ def combine_codes_to_label(codes: list[int]) -> str:
     return f"{overall_low}+" if overall_high >= 999 else f"{overall_low}-{overall_high}"
 
 # ------------------------------------------------------------------------
-# Data aggregation functions
+# CORRECTED Data aggregation functions
 def aggregate_age_with_brackets(
     df_source: pd.DataFrame,
     year_str: str,
@@ -172,34 +135,42 @@ def aggregate_age_with_brackets(
     agegroup_display: str,
     agegroup_map_implicit: dict
 ) -> pd.DataFrame:
-    """Aggregates data by age brackets (or custom ranges)"""
+    """
+    CORRECTED: Aggregates data by age brackets (or custom ranges)
+    Fixed percentage calculation and total population handling
+    """
     if df_source is None or df_source.empty:
         return pd.DataFrame(columns=["AgeGroup", "Count", "Percent", "Year"])
     
+    # Calculate TOTAL population for percentage calculations
+    # This should be the total of ALL filtered data, not just what's in brackets
+    total_population = df_source["Count"].sum()
+    
     # If no bracket selection & no custom ranges => entire population
     if agegroup_for_backend is None and not custom_ranges:
-        total_pop = df_source["Count"].sum()
         return pd.DataFrame({
-            "AgeGroup": ["IL Population"],
-            "Count": [total_pop],
-            "Percent": [100.0 if total_pop > 0 else 0.0],
+            "AgeGroup": ["All Ages"],
+            "Count": [total_population],
+            "Percent": [100.0],
             "Year": [year_str]
         })
 
     # If custom ranges
     if custom_ranges:
-        rows, total_sum = [], 0
+        rows = []
         for (mn, mx) in custom_ranges:
-            code_list = range(mn, mx+1)
-            bracket_label = combine_codes_to_label(list(code_list))
+            code_list = list(range(mn, mx+1))
+            bracket_label = combine_codes_to_label(code_list)
             mask = df_source["Age"].isin(code_list)
             sub_sum = df_source.loc[mask, "Count"].sum()
             rows.append((bracket_label, sub_sum))
-            total_sum += sub_sum
+        
         out_rows = []
         for (bexpr, cval) in rows:
-            pct = (cval / total_sum * 100.0) if total_sum > 0 else 0.0
-            out_rows.append((bexpr, cval, round(pct,1)))
+            # Calculate percentage against TOTAL population, not sum of brackets
+            pct = (cval / total_population * 100.0) if total_population > 0 else 0.0
+            out_rows.append((bexpr, cval, round(pct, 1)))
+        
         df_out = pd.DataFrame(out_rows, columns=["AgeGroup", "Count", "Percent"])
         df_out["Year"] = year_str
         return df_out
@@ -207,26 +178,25 @@ def aggregate_age_with_brackets(
     # Otherwise, use the implicit bracket definitions from the map
     brackets_implicit = agegroup_map_implicit.get(agegroup_for_backend, [])
     if not brackets_implicit:
-        total_pop = df_source["Count"].sum()
         return pd.DataFrame({
             "AgeGroup": [f"No bracket for {agegroup_display}"],
-            "Count": [total_pop],
-            "Percent": [100.0 if total_pop > 0 else 0.0],
+            "Count": [total_population],
+            "Percent": [100.0],
             "Year": [year_str]
         })
 
-    rows, total_sum = [], 0
+    rows = []
     for bracket_expr in brackets_implicit:
         bracket_expr = bracket_expr.strip()
         mask = frontend_bracket_utils.parse_implicit_bracket(df_source, bracket_expr)
         sub_sum = df_source.loc[mask, "Count"].sum()
         rows.append((bracket_expr, sub_sum))
-        total_sum += sub_sum
 
     out_rows = []
     for (bexpr, cval) in rows:
-        pct = (cval / total_sum * 100.0) if total_sum > 0 else 0.0
-        out_rows.append((bexpr, cval, round(pct,1)))
+        # Calculate percentage against TOTAL population
+        pct = (cval / total_population * 100.0) if total_population > 0 else 0.0
+        out_rows.append((bexpr, cval, round(pct, 1)))
 
     df_out = pd.DataFrame(out_rows, columns=["AgeGroup", "Count", "Percent"])
     df_out["Year"] = year_str
@@ -238,7 +208,10 @@ def aggregate_by_field(
     year_str: str,
     county_id_to_name: dict
 ) -> pd.DataFrame:
-    """Aggregates by Race, Ethnicity, Sex, or County"""
+    """
+    CORRECTED: Aggregates by Race, Ethnicity, Sex, or County
+    Fixed percentage calculation to use total filtered population
+    """
     if df_source is None or df_source.empty:
         if group_by == "County":
             return pd.DataFrame(columns=["County Code", "County Name", "Count", "Percent", "Year"])
@@ -251,10 +224,11 @@ def aggregate_by_field(
         else:
             return pd.DataFrame(columns=[group_by, "Count", "Percent", "Year"])
 
+    # Calculate total population for percentage base
+    total_population = df_source["Count"].sum()
+    
     grouped = df_source.groupby(group_by)["Count"].sum().reset_index()
-    total_sum = grouped["Count"].sum()
-    grouped["Percent"] = grouped["Count"] / total_sum * 100 if total_sum > 0 else 0
-    grouped["Percent"] = grouped["Percent"].round(1)
+    grouped["Percent"] = (grouped["Count"] / total_population * 100).round(1) if total_population > 0 else 0
     grouped["Year"] = year_str
 
     if group_by == "Race":
@@ -268,6 +242,27 @@ def aggregate_by_field(
         return grouped
 
 # ------------------------------------------------------------------------
+# Data validation and debugging function
+def debug_data_processing(df_source, filters_applied):
+    """Helper function to debug data processing"""
+    if df_source is None or df_source.empty:
+        st.warning("No data after filtering")
+        return
+    
+    st.write(f"**Debug Info - {filters_applied}**")
+    st.write(f"Total records: {len(df_source)}")
+    st.write(f"Total population: {df_source['Count'].sum():,}")
+    
+    if "Age" in df_source.columns:
+        st.write(f"Age range: {df_source['Age'].min()} to {df_source['Age'].max()}")
+    
+    if "Race" in df_source.columns:
+        st.write(f"Races present: {df_source['Race'].unique()}")
+    
+    if "County" in df_source.columns:
+        st.write(f"Counties present: {len(df_source['County'].unique())}")
+
+# ------------------------------------------------------------------------
 # Main Application
 def main():
     # Header Section
@@ -277,6 +272,9 @@ def main():
     # Initialize session state
     if 'report_df' not in st.session_state:
         st.session_state.report_df = pd.DataFrame()
+    
+    # Debug mode
+    debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
     
     # Load form control data
     try:
@@ -288,23 +286,13 @@ def main():
          agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
         
         if years_list:
-            st.success("✅ Data loaded successfully!")
+            st.sidebar.success("✅ Data loaded successfully!")
         else:
-            st.warning("⚠️ No data found. Using sample configuration.")
-            # Provide sample data for demonstration
-            years_list = ["2020", "2021", "2022", "2023"]
-            counties_map = {"Cook": 31, "DuPage": 43, "Lake": 97, "Will": 197}
-            races_list_raw = ["White", "Black", "Asian", "Hispanic"]
-            agegroups_list_raw = ["Under 18", "18-64", "65+"]
-        
+            st.sidebar.warning("⚠️ No data found in form control file")
+            
     except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
-        st.info("Using sample configuration for demonstration")
-        # Provide sample data
-        years_list = ["2020", "2021", "2022", "2023"]
-        counties_map = {"Cook": 31, "DuPage": 43, "Lake": 97, "Will": 197}
-        races_list_raw = ["White", "Black", "Asian", "Hispanic"]
-        agegroups_list_raw = ["Under 18", "18-64", "65+"]
+        st.sidebar.error(f"❌ Error loading data: {e}")
+        return
 
     # Quick Stats Overview
     st.markdown("## 📊 Data Overview")
@@ -355,7 +343,7 @@ def main():
             selected_years = st.multiselect(
                 "Select Year(s):",
                 options=years_list,
-                default=years_list[-1:] if years_list else [],  # Default to most recent year
+                default=years_list[-1:] if years_list else [],
                 help="Choose one or more years to analyze"
             )
             
@@ -433,7 +421,6 @@ def main():
             st.write("**Custom Age Ranges:**")
             st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
             
-            # Fixed custom ranges - no zero values
             custom_ranges = []
             range_cols = st.columns(3)
             
@@ -480,7 +467,7 @@ def main():
     
     # Action Buttons
     st.markdown("---")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         generate_btn = st.button("🚀 Generate Report", use_container_width=True, type="primary")
@@ -491,23 +478,17 @@ def main():
             st.rerun()
     
     with col3:
-        show_links = st.button("📊 Census Links", use_container_width=True)
-    
-    with col4:
         download_disabled = st.session_state.report_df.empty
-        download_btn = st.button("💾 Download Data", use_container_width=True, disabled=download_disabled)
-
-    # Census Links
-    if show_links:
-        with st.expander("U.S. Census Bureau Links", expanded=True):
-            st.write("""
-            **Data Sources:**
-            - [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
-            - [2000-2010 Intercensal County Data](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
-            - [2010-2020 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/)
-            - [2020-2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
-            - [Release Schedule](https://www.census.gov/programs-surveys/popest/about/schedule.html)
-            """)
+        if st.button("💾 Download Data", use_container_width=True, disabled=download_disabled):
+            if not st.session_state.report_df.empty:
+                csv_data = st.session_state.report_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv_data,
+                    file_name="illinois_population_data.csv",
+                    mime="text/csv",
+                    key="download_btn"
+                )
 
     # Generate Report Logic
     if generate_btn:
@@ -534,6 +515,7 @@ def main():
         with st.spinner("🔄 Processing data..."):
             try:
                 all_frames = []
+                debug_info = []
                 
                 def get_aggregated_result(county_list, county_label):
                     frames_for_years = []
@@ -552,6 +534,9 @@ def main():
                                 selected_agegroup=agegroup_for_backend,
                                 custom_age_ranges=custom_ranges if custom_ranges else []
                             )
+                            
+                            if debug_mode:
+                                debug_info.append(f"Year {year}, {county_label}: {len(df_source)} records, Total Pop: {df_source['Count'].sum():,}")
                             
                             if grouping_var == "None" or grouping_var == "Age":
                                 age_df = aggregate_age_with_brackets(
@@ -601,9 +586,14 @@ def main():
                     final_df = pd.DataFrame()
                     st.session_state.report_df = final_df
                     
+                # Show debug info if enabled
+                if debug_mode and debug_info:
+                    with st.expander("Debug Information"):
+                        for info in debug_info:
+                            st.write(info)
+                            
             except Exception as e:
                 st.error(f"❌ Error generating report: {e}")
-                st.info("This might be due to missing data files or backend processing issues")
         
         # Display Results
         if st.session_state.report_df.empty:
@@ -613,21 +603,20 @@ def main():
             
             # Summary statistics
             total_population = st.session_state.report_df["Count"].sum()
-            st.metric("Total Population Count", f"{total_population:,}")
+            st.metric("Total Population in Report", f"{total_population:,}")
             
             # Display data
             st.markdown("### 📋 Results")
             st.dataframe(st.session_state.report_df, use_container_width=True)
-    
-    # Download functionality
-    if download_btn and "report_df" in st.session_state and not st.session_state.report_df.empty:
-        csv_data = st.session_state.report_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv_data,
-            file_name="illinois_population_data.csv",
-            mime="text/csv",
-        )
+            
+            # Add download button
+            csv_data = st.session_state.report_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download CSV",
+                data=csv_data,
+                file_name="illinois_population_data.csv",
+                mime="text/csv",
+            )
 
     # Show existing results if available
     elif not st.session_state.report_df.empty:
