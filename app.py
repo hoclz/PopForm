@@ -64,13 +64,6 @@ st.markdown("""
         color: #4a5568;
         font-weight: 500;
     }
-    .data-source {
-        background: #f8f9fa;
-        padding: 15px;
-        border-radius: 8px;
-        border-left: 4px solid #0d47a1;
-        margin: 20px 0;
-    }
     .census-links {
         background: #e3f2fd;
         padding: 20px;
@@ -310,50 +303,6 @@ def display_census_links():
         - [2020-2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
         - [RELEASE SCHEDULE](https://www.census.gov/programs-surveys/popest/about/schedule.html)
         """)
-
-# ------------------------------------------------------------------------
-# Census Data Source Display Function
-def display_census_data_sources():
-    """Display census data source information"""
-    st.markdown("---")
-    st.markdown("### 📊 Data Sources")
-    
-    st.markdown("""
-    <div class="data-source">
-    <h4>U.S. Census Bureau Data Sources</h4>
-    <p>This application utilizes official data from the following U.S. Census Bureau sources:</p>
-    <ul>
-        <li><b>Decennial Census (2000, 2010):</b> Complete population counts conducted every 10 years</li>
-        <li><b>American Community Survey (ACS):</b> Annual demographic and economic data (2005-present)</li>
-        <li><b>Population Estimates Program (PEP):</b> Annual population estimates between censuses</li>
-    </ul>
-    <p><b>Note:</b> All data are official U.S. Census Bureau estimates and may be subject to sampling error, particularly for smaller geographic areas and demographic subgroups.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("**Data Years Available**")
-        st.write("• 2000 (Decennial Census)")
-        st.write("• 2001-2004 (Estimates)")
-        st.write("• 2005-2009 (ACS 1-Year)")
-        st.write("• 2010 (Decennial Census)")
-        st.write("• 2011-2024 (ACS 1-Year)")
-    
-    with col2:
-        st.markdown("**Geographic Coverage**")
-        st.write("• All 102 Illinois Counties")
-        st.write("• State of Illinois Totals")
-        st.write("• County-level Estimates")
-        st.write("• Place/Municipality Data")
-    
-    with col3:
-        st.markdown("**Demographic Variables**")
-        st.write("• Age and Sex Distribution")
-        st.write("• Race and Ethnicity")
-        st.write("• Household Composition")
-        st.write("• Social Characteristics")
 
 # ------------------------------------------------------------------------
 # Main Application
@@ -729,8 +678,7 @@ def main():
             mime="text/csv",
         )
 
-    # Display Census Data Sources and Links
-    display_census_data_sources()
+    # Display Census Links
     display_census_links()
 
     # Footer
