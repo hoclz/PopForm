@@ -9,23 +9,32 @@ import os
 # ------------------------------------------------------------------------
 # Streamlit Page Config
 st.set_page_config(
-    page_title="Illinois Census Query Builder",
+    page_title="Illinois Population Data Explorer",
     layout="wide",  
     page_icon="🏛️"
 )
 
 # ------------------------------------------------------------------------
-# Custom CSS for Illinois-themed design
+# Custom CSS for Illinois-themed design with improved title styling
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.8rem;
+        font-size: 3rem;
         background: linear-gradient(135deg, #0d47a1, #1976d2);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
         font-weight: 800;
+        line-height: 1.1;
+    }
+    .sub-title {
+        font-size: 1.2rem;
+        color: #4a5568;
+        text-align: center;
+        margin-bottom: 2rem;
+        font-weight: 400;
+        font-style: italic;
     }
     .section-header {
         font-size: 1.6rem;
@@ -43,6 +52,24 @@ st.markdown("""
         margin-bottom: 1rem;
         text-align: center;
         border: 1px solid #90caf9;
+    }
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1a365d;
+        margin-bottom: 0.5rem;
+    }
+    .metric-label {
+        font-size: 0.9rem;
+        color: #4a5568;
+        font-weight: 500;
+    }
+    .data-source {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #0d47a1;
+        margin: 20px 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -263,11 +290,55 @@ def debug_data_processing(df_source, filters_applied):
         st.write(f"Counties present: {len(df_source['County'].unique())}")
 
 # ------------------------------------------------------------------------
+# Census Data Source Display Function
+def display_census_data_sources():
+    """Display census data source information"""
+    st.markdown("---")
+    st.markdown("### 📊 Data Sources")
+    
+    st.markdown("""
+    <div class="data-source">
+    <h4>U.S. Census Bureau Data Sources</h4>
+    <p>This application utilizes official data from the following U.S. Census Bureau sources:</p>
+    <ul>
+        <li><b>Decennial Census (2000, 2010):</b> Complete population counts conducted every 10 years</li>
+        <li><b>American Community Survey (ACS):</b> Annual demographic and economic data (2005-present)</li>
+        <li><b>Population Estimates Program (PEP):</b> Annual population estimates between censuses</li>
+    </ul>
+    <p><b>Note:</b> All data are official U.S. Census Bureau estimates and may be subject to sampling error, particularly for smaller geographic areas and demographic subgroups.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**Data Years Available**")
+        st.write("• 2000 (Decennial Census)")
+        st.write("• 2001-2004 (Estimates)")
+        st.write("• 2005-2009 (ACS 1-Year)")
+        st.write("• 2010 (Decennial Census)")
+        st.write("• 2011-2024 (ACS 1-Year)")
+    
+    with col2:
+        st.markdown("**Geographic Coverage**")
+        st.write("• All 102 Illinois Counties")
+        st.write("• State of Illinois Totals")
+        st.write("• County-level Estimates")
+        st.write("• Place/Municipality Data")
+    
+    with col3:
+        st.markdown("**Demographic Variables**")
+        st.write("• Age and Sex Distribution")
+        st.write("• Race and Ethnicity")
+        st.write("• Household Composition")
+        st.write("• Social Characteristics")
+
+# ------------------------------------------------------------------------
 # Main Application
 def main():
-    # Header Section
+    # Header Section with Improved Title Styling
     st.markdown('<div class="main-header">🏛️ Illinois Population Data Explorer</div>', unsafe_allow_html=True)
-    st.markdown("### Analyze demographic trends across Illinois counties from 2000-2024")
+    st.markdown('<div class="sub-title">Analyze demographic trends across Illinois counties from 2000-2024</div>', unsafe_allow_html=True)
     
     # Initialize session state
     if 'report_df' not in st.session_state:
@@ -631,6 +702,9 @@ def main():
             file_name="illinois_population_data.csv",
             mime="text/csv",
         )
+
+    # Display Census Data Sources
+    display_census_data_sources()
 
     # Footer
     st.markdown("---")
