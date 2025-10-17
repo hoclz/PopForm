@@ -88,7 +88,11 @@ try:
     import frontend_bracket_utils
 except ImportError as e:
     st.error(f"Error importing backend modules: {e}")
-    st.stop()
+    st.info("Please ensure all backend modules are available")
+    # Create dummy functions for demonstration
+    def dummy_load_data(*args):
+        return [], [], [], {}, {}, {}
+    frontend_data_loader.load_form_control_data = dummy_load_data
 
 # ------------------------------------------------------------------------
 # Path configurations
@@ -270,6 +274,10 @@ def main():
     st.markdown('<div class="main-header">🏛️ Illinois Population Data Explorer</div>', unsafe_allow_html=True)
     st.markdown("### Analyze demographic trends across Illinois counties from 2000-2024")
     
+    # Initialize session state
+    if 'report_df' not in st.session_state:
+        st.session_state.report_df = pd.DataFrame()
+    
     # Load form control data
     try:
         (years_list,
@@ -279,12 +287,24 @@ def main():
          agegroup_map_explicit,
          agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
         
-        st.success("✅ Data loaded successfully!")
+        if years_list:
+            st.success("✅ Data loaded successfully!")
+        else:
+            st.warning("⚠️ No data found. Using sample configuration.")
+            # Provide sample data for demonstration
+            years_list = ["2020", "2021", "2022", "2023"]
+            counties_map = {"Cook": 31, "DuPage": 43, "Lake": 97, "Will": 197}
+            races_list_raw = ["White", "Black", "Asian", "Hispanic"]
+            agegroups_list_raw = ["Under 18", "18-64", "65+"]
         
     except Exception as e:
         st.error(f"❌ Error loading data: {e}")
-        st.info("Please ensure form_control_UI_data.csv is in the correct location")
-        return
+        st.info("Using sample configuration for demonstration")
+        # Provide sample data
+        years_list = ["2020", "2021", "2022", "2023"]
+        counties_map = {"Cook": 31, "DuPage": 43, "Lake": 97, "Will": 197}
+        races_list_raw = ["White", "Black", "Asian", "Hispanic"]
+        agegroups_list_raw = ["Under 18", "18-64", "65+"]
 
     # Quick Stats Overview
     st.markdown("## 📊 Data Overview")
@@ -358,7 +378,8 @@ def main():
                 if rcode == "All":
                     continue
                 friendly_name = RACE_CODE_TO_DISPLAY.get(rcode, rcode)
-                race_filter_list.append(friendly_name)
+                if friendly_name not in race_filter_list:
+                    race_filter_list.append(friendly_name)
             
             selected_race_display = st.selectbox(
                 "Race Filter:",
@@ -412,16 +433,30 @@ def main():
             st.write("**Custom Age Ranges:**")
             st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
             
+            # Fixed custom ranges - no zero values
             custom_ranges = []
-            for i in range(3):  # Allow up to 3 custom ranges
-                col_min, col_max = st.columns(2)
-                with col_min:
-                    min_val = st.number_input(f"Range {i+1} Min", min_value=1, max_value=18, value=1 if i == 0 else 0, key=f"min_{i}")
-                with col_max:
-                    max_val = st.number_input(f"Range {i+1} Max", min_value=1, max_value=18, value=5 if i == 0 else 0, key=f"max_{i}")
-                
-                if min_val > 0 and max_val > 0 and min_val <= max_val:
-                    custom_ranges.append((min_val, max_val))
+            range_cols = st.columns(3)
+            
+            with range_cols[0]:
+                if st.checkbox("Range 1", key="range1_check"):
+                    min1 = st.number_input("Min 1", min_value=1, max_value=18, value=1, key="min1")
+                    max1 = st.number_input("Max 1", min_value=1, max_value=18, value=5, key="max1")
+                    if min1 <= max1:
+                        custom_ranges.append((min1, max1))
+            
+            with range_cols[1]:
+                if st.checkbox("Range 2", key="range2_check"):
+                    min2 = st.number_input("Min 2", min_value=1, max_value=18, value=6, key="min2")
+                    max2 = st.number_input("Max 2", min_value=1, max_value=18, value=10, key="max2")
+                    if min2 <= max2:
+                        custom_ranges.append((min2, max2))
+            
+            with range_cols[2]:
+                if st.checkbox("Range 3", key="range3_check"):
+                    min3 = st.number_input("Min 3", min_value=1, max_value=18, value=11, key="min3")
+                    max3 = st.number_input("Max 3", min_value=1, max_value=18, value=15, key="max3")
+                    if min3 <= max3:
+                        custom_ranges.append((min3, max3))
     
     # Grouping Options
     st.markdown('<div class="section-header">📈 Output Configuration</div>', unsafe_allow_html=True)
@@ -448,36 +483,41 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        generate_btn = st.button("🚀 Generate Report", use_container_width=True)
+        generate_btn = st.button("🚀 Generate Report", use_container_width=True, type="primary")
     
     with col2:
-        if st.button("🗑️ Clear Filters", use_container_width=True):
+        if st.button("🗑️ Clear Results", use_container_width=True):
+            st.session_state.report_df = pd.DataFrame()
             st.rerun()
     
     with col3:
-        if st.button("📊 Census Links", use_container_width=True):
-            with st.expander("U.S. Census Bureau Links", expanded=True):
-                st.write("""
-                **Data Sources:**
-                - [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
-                - [2000-2010 Intercensal County Data](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
-                - [2010-2020 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/)
-                - [2020-2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
-                - [Release Schedule](https://www.census.gov/programs-surveys/popest/about/schedule.html)
-                """)
+        show_links = st.button("📊 Census Links", use_container_width=True)
     
     with col4:
-        download_btn = st.button("💾 Download Data", use_container_width=True)
+        download_disabled = st.session_state.report_df.empty
+        download_btn = st.button("💾 Download Data", use_container_width=True, disabled=download_disabled)
+
+    # Census Links
+    if show_links:
+        with st.expander("U.S. Census Bureau Links", expanded=True):
+            st.write("""
+            **Data Sources:**
+            - [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
+            - [2000-2010 Intercensal County Data](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
+            - [2010-2020 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/)
+            - [2020-2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
+            - [Release Schedule](https://www.census.gov/programs-surveys/popest/about/schedule.html)
+            """)
 
     # Generate Report Logic
     if generate_btn:
         if not selected_years:
             st.warning("⚠️ Please select at least one year.")
-            return
+            st.stop()
         
         if not selected_counties:
             st.warning("⚠️ Please select at least one county.")
-            return
+            st.stop()
         
         # Convert selections for backend processing
         if selected_race_display == "All":
@@ -492,73 +532,78 @@ def main():
         
         # Process data
         with st.spinner("🔄 Processing data..."):
-            all_frames = []
-            
-            def get_aggregated_result(county_list, county_label):
-                frames_for_years = []
-                for year in selected_years:
-                    try:
-                        df_source = backend_main_processing.process_population_data(
-                            data_folder=DATA_FOLDER,
-                            agegroup_map_explicit=agegroup_map_explicit,
-                            counties_map=counties_map,
-                            selected_years=[year],
-                            selected_counties=county_list,
-                            selected_race=selected_race_code,
-                            selected_ethnicity=selected_ethnicity,
-                            selected_sex=selected_sex,
-                            selected_region=selected_region,
-                            selected_agegroup=agegroup_for_backend,
-                            custom_age_ranges=custom_ranges if custom_ranges else []
-                        )
-                        
-                        if grouping_var == "None" or grouping_var == "Age":
-                            age_df = aggregate_age_with_brackets(
-                                df_source=df_source,
-                                year_str=year,
-                                agegroup_for_backend=agegroup_for_backend,
-                                custom_ranges=custom_ranges if custom_ranges else [],
-                                agegroup_display=selected_agegroup_display,
-                                agegroup_map_implicit=agegroup_map_implicit
-                            )
-                            if not age_df.empty:
-                                age_df.insert(0, "County", county_label)
-                            frames_for_years.append(age_df)
-                        else:
-                            group_df = aggregate_by_field(df_source, grouping_var, year, counties_map)
-                            if grouping_var != "County":
-                                if not group_df.empty:
-                                    group_df.insert(0, "County", county_label)
-                            frames_for_years.append(group_df)
-                            
-                    except Exception as e:
-                        st.error(f"Error processing {year} for {county_label}: {e}")
+            try:
+                all_frames = []
                 
-                if frames_for_years:
-                    return pd.concat(frames_for_years, ignore_index=True)
-                return pd.DataFrame()
-            
-            # Get combined results
-            if "All" in selected_counties:
-                df_combined = get_aggregated_result(["All"], "All Counties")
-            else:
-                df_combined = get_aggregated_result(selected_counties, "Selected Counties")
-            
-            all_frames.append(df_combined)
-            
-            # Individual county breakdowns if requested
-            if include_breakdown and "All" not in selected_counties:
-                for county in selected_counties:
-                    df_county = get_aggregated_result([county], county)
-                    all_frames.append(df_county)
-            
-            # Combine all results
-            if all_frames:
-                final_df = pd.concat(all_frames, ignore_index=True)
-                st.session_state.report_df = final_df
-            else:
-                final_df = pd.DataFrame()
-                st.session_state.report_df = final_df
+                def get_aggregated_result(county_list, county_label):
+                    frames_for_years = []
+                    for year in selected_years:
+                        try:
+                            df_source = backend_main_processing.process_population_data(
+                                data_folder=DATA_FOLDER,
+                                agegroup_map_explicit=agegroup_map_explicit,
+                                counties_map=counties_map,
+                                selected_years=[year],
+                                selected_counties=county_list,
+                                selected_race=selected_race_code,
+                                selected_ethnicity=selected_ethnicity,
+                                selected_sex=selected_sex,
+                                selected_region=selected_region,
+                                selected_agegroup=agegroup_for_backend,
+                                custom_age_ranges=custom_ranges if custom_ranges else []
+                            )
+                            
+                            if grouping_var == "None" or grouping_var == "Age":
+                                age_df = aggregate_age_with_brackets(
+                                    df_source=df_source,
+                                    year_str=year,
+                                    agegroup_for_backend=agegroup_for_backend,
+                                    custom_ranges=custom_ranges if custom_ranges else [],
+                                    agegroup_display=selected_agegroup_display,
+                                    agegroup_map_implicit=agegroup_map_implicit
+                                )
+                                if not age_df.empty:
+                                    age_df.insert(0, "County", county_label)
+                                frames_for_years.append(age_df)
+                            else:
+                                group_df = aggregate_by_field(df_source, grouping_var, year, counties_map)
+                                if grouping_var != "County":
+                                    if not group_df.empty:
+                                        group_df.insert(0, "County", county_label)
+                                frames_for_years.append(group_df)
+                                
+                        except Exception as e:
+                            st.error(f"Error processing {year} for {county_label}: {e}")
+                    
+                    if frames_for_years:
+                        return pd.concat(frames_for_years, ignore_index=True)
+                    return pd.DataFrame()
+                
+                # Get combined results
+                if "All" in selected_counties:
+                    df_combined = get_aggregated_result(["All"], "All Counties")
+                else:
+                    df_combined = get_aggregated_result(selected_counties, "Selected Counties")
+                
+                all_frames.append(df_combined)
+                
+                # Individual county breakdowns if requested
+                if include_breakdown and "All" not in selected_counties:
+                    for county in selected_counties:
+                        df_county = get_aggregated_result([county], county)
+                        all_frames.append(df_county)
+                
+                # Combine all results
+                if all_frames:
+                    final_df = pd.concat(all_frames, ignore_index=True)
+                    st.session_state.report_df = final_df
+                else:
+                    final_df = pd.DataFrame()
+                    st.session_state.report_df = final_df
+                    
+            except Exception as e:
+                st.error(f"❌ Error generating report: {e}")
+                st.info("This might be due to missing data files or backend processing issues")
         
         # Display Results
         if st.session_state.report_df.empty:
@@ -576,6 +621,20 @@ def main():
     
     # Download functionality
     if download_btn and "report_df" in st.session_state and not st.session_state.report_df.empty:
+        csv_data = st.session_state.report_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv_data,
+            file_name="illinois_population_data.csv",
+            mime="text/csv",
+        )
+
+    # Show existing results if available
+    elif not st.session_state.report_df.empty:
+        st.markdown("### 📋 Existing Results")
+        st.dataframe(st.session_state.report_df, use_container_width=True)
+        
+        # Download button for existing results
         csv_data = st.session_state.report_df.to_csv(index=False)
         st.download_button(
             label="📥 Download CSV",
