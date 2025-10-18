@@ -565,7 +565,7 @@ def main():
         with col2:
             st.write("**Custom Age Ranges:**")
             st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
-            st.info("ℹ️", help="""Age codes: 
+            st.button("❓", key="age_range_help", help="""Age codes: 
             1=0-4, 2=5-9, 3=10-14, 4=15-19, 5=20-24, 
             6=25-29, 7=30-34, 8=35-39, 9=40-44, 10=45-49, 
             11=50-54, 12=55-59, 13=60-64, 14=65-69, 15=70-74, 
