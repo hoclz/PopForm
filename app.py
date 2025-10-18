@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt  # kept for future charts
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
@@ -254,7 +253,7 @@ def attach_agegroup_column(
         covered = np.zeros(len(df), dtype=bool)
         for (mn, mx) in custom_ranges:
             mn_i = max(1, int(mn)); mx_i = min(18, int(mx))
-            if mn_i > mx_i: 
+            if mn_i > mx_i:
                 continue
             codes = list(range(mn_i, mx_i + 1))
             label = combine_codes_to_label(codes)
@@ -308,7 +307,6 @@ def aggregate_multi(
     # Convenience for empty result
     def _empty():
         base = (["County"] if "County" not in grouping_vars_clean else [])
-        # replace Age with AgeGroup in header for consistency if present
         cols = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
         return pd.DataFrame(columns=base + cols + ["Count", "Percent", "Year"])
 
@@ -326,7 +324,6 @@ def aggregate_multi(
             "Percent": [100.0],
             "Year": [str(year_str)]
         })
-        # Since we're not grouping by County, add the friendly label
         out.insert(0, "County", county_label)
         out = ensure_county_names(out, counties_map)
         return out
@@ -348,41 +345,59 @@ def aggregate_multi(
     if "Race" in grouped.columns:
         grouped["Race"] = grouped["Race"].map(RACE_CODE_TO_DISPLAY).fillna(grouped["Race"])
 
-    # Percent vs total filtered pop for that block (year × county_list)
     grouped["Year"] = str(year_str)
-    grouped["Percent"] = (grouped["Count"] / total_population * 100.0).round(1)
+
+    # ------------------------  PERCENT DENOMINATOR LOGIC  ------------------------
+    # Compute percent within the "local" base:
+    # - If grouped by County → within County×Year (and ×AgeGroup if Age included)
+    # - Else → within Year (and ×AgeGroup if Age included)
+    if "County" in grouping_vars_clean:
+        # Rename County to County Code and add names
+        if "County" in grouped.columns:
+            grouped.rename(columns={"County": "County Code"}, inplace=True)
+        grouped = ensure_county_names(grouped, counties_map)
+
+        denom_keys = ["Year", "County Code"]
+        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns:
+            denom_keys.append("AgeGroup")
+    else:
+        # Not grouping by county → we'll add a label column after percent
+        denom_keys = ["Year"]
+        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns:
+            denom_keys.append("AgeGroup")
+
+    # Compute denominator sums and Percent
+    if denom_keys:
+        den = grouped.groupby(denom_keys, dropna=False)["Count"].transform("sum")
+        grouped["Percent"] = np.where(den > 0, (grouped["Count"] / den * 100).round(1), 0.0)
+    else:
+        # Fallback — shouldn't happen with current logic
+        grouped["Percent"] = (grouped["Count"] / total_population * 100.0).round(1)
+    # ---------------------------------------------------------------------------
 
     # If NOT grouping by County → add friendly label column
     if "County" not in grouping_vars_clean:
         grouped.insert(0, "County", county_label)
         grouped = ensure_county_names(grouped, counties_map)
     else:
-        # If grouping by County, rename and add names
-        if "County" in grouped.columns:
-            grouped.rename(columns={"County": "County Code"}, inplace=True)
-        grouped = ensure_county_names(grouped, counties_map)
-        # Update fields so ordering uses "County Code"
+        # Update group_fields so ordering uses "County Code"
         group_fields = ["County Code" if g == "County" else g for g in group_fields]
 
     # Reorder columns ONLY by existing ones to avoid KeyErrors
     existing = list(grouped.columns)
     col_order: List[str] = []
-
     if "County" in existing:
         col_order.append("County")
     if "County Code" in existing:
         col_order += ["County Code"]
         if "County Name" in existing:
             col_order += ["County Name"]
-
     for c in group_fields:
         if c in existing and c not in col_order:
             col_order.append(c)
-
     for c in ["Count", "Percent", "Year"]:
         if c in existing:
             col_order.append(c)
-
     grouped = grouped[col_order]
     return grouped
 
@@ -521,14 +536,13 @@ def main():
     st.markdown('<div class="section-header">📈 Output Configuration</div>', unsafe_allow_html=True)
     oc1, oc2 = st.columns(2)
     with oc1:
-        # ✅ Default is "All"
+        # Default is "All"
         grouping_vars = st.multiselect(
             "Group Results By:",
             ["All", "Age", "Race", "Ethnicity", "Sex", "County"],
             default=["All"],
             help="Choose 'All' for totals only, or select columns (e.g., Race + Sex)."
         )
-        # If "All" is selected with others, force "All" only
         if "All" in grouping_vars and len(grouping_vars) > 1:
             st.info("Using 'All' (totals only). Other selections ignored.")
             grouping_vars = ["All"]
@@ -538,11 +552,9 @@ def main():
             value=True,
             help="Show a separate table for each selected county in addition to the combined results."
         )
-        if "County" in grouping_vars:
-            # (won't happen when grouping_vars == ["All"], but keep guard)
-            if include_breakdown:
-                st.info("When grouping by County, individual county breakdowns are redundant and will be skipped.")
-                include_breakdown = False
+        if "County" in grouping_vars and include_breakdown:
+            st.info("When grouping by County, individual county breakdowns are redundant and will be skipped.")
+            include_breakdown = False
 
     # Buttons
     st.markdown("---")
@@ -562,7 +574,8 @@ def main():
             st.stop()
 
         selected_race_code = "All" if selected_race_display == "All" else RACE_DISPLAY_TO_CODE.get(selected_race_display, selected_race_display)
-        agegroup_for_backend = None if selected_agegroup_display == "All" else {"All": None, "18-Bracket": "agegroup13", "6-Bracket": "agegroup14", "2-Bracket": "agegroup15"}[selected_agegroup_display]
+        age_map = {"All": None, "18-Bracket": "agegroup13", "6-Bracket": "agegroup14", "2-Bracket": "agegroup15"}
+        agegroup_for_backend = age_map[selected_agegroup_display]
 
         st.session_state.selected_filters = {
             "years": [str(y) for y in selected_years],
