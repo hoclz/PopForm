@@ -563,33 +563,37 @@ def main():
                     st.write("**Age Brackets:**", ", ".join(brackets_implicit))
         
         with col2:
-            st.write("**Custom Age Ranges:**")
-            st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
-            st.button("❓", key="age_range_help", help="""Age codes: 
-            1=0-4, 2=5-9, 3=10-14, 4=15-19, 5=20-24, 
-            6=25-29, 7=30-34, 8=35-39, 9=40-44, 10=45-49, 
-            11=50-54, 12=55-59, 13=60-64, 14=65-69, 15=70-74, 
-            16=75-79, 17=80-84, 18=80+.
+            col_a, col_b = st.columns([4, 1])
+            with col_a:
+                st.write("**Custom Age Ranges:**")
+            with col_b:
+                st.button("❓", key="age_range_help", help="""Age codes: 
+        1=0-4, 2=5-9, 3=10-14, 4=15-19, 5=20-24, 
+        6=25-29, 7=30-34, 8=35-39, 9=40-44, 10=45-49, 
+        11=50-54, 12=55-59, 13=60-64, 14=65-69, 15=70-74, 
+        16=75-79, 17=80-84, 18=80+.
 
-            See Documentation Codebooks under Census Data Links for details.""")
-            
+        See Documentation Codebooks under Census Data Links for details.""")
+    
+            st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
+    
             custom_ranges = []
             range_cols = st.columns(3)
-            
+    
             with range_cols[0]:
                 if st.checkbox("Range 1", key="range1_check"):
                     min1 = st.number_input("Min 1", min_value=1, max_value=18, value=1, key="min1")
                     max1 = st.number_input("Max 1", min_value=1, max_value=18, value=5, key="max1")
                     if min1 <= max1:
                         custom_ranges.append((min1, max1))
-            
+    
             with range_cols[1]:
                 if st.checkbox("Range 2", key="range2_check"):
                     min2 = st.number_input("Min 2", min_value=1, max_value=18, value=6, key="min2")
                     max2 = st.number_input("Max 2", min_value=1, max_value=18, value=10, key="max2")
                     if min2 <= max2:
                         custom_ranges.append((min2, max2))
-            
+    
             with range_cols[2]:
                 if st.checkbox("Range 3", key="range3_check"):
                     min3 = st.number_input("Min 3", min_value=1, max_value=18, value=11, key="min3")
