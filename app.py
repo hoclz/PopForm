@@ -564,12 +564,15 @@ def main():
         
         with col2:
             st.write("**Custom Age Ranges:**")
-            st.caption(
-                "Optional: Define custom age ranges (overrides Age Group selection). "
-                "Age codes: 1=0-4, 2=5-9, 3=10-14, 4=15-19, 5=20-24, 6=25-29, 7=30-34, 8=35-39, "
-                "9=40-44, 10=45-49, 11=50-54, 12=55-59, 13=60-64, 14=65-69, 15=70-74, 16=75-79, "
-                "17=80-84, 18=80+. See Documentation Codebooks under Census Data Links for details."
-            )
+            st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
+            st.markdown("""<span style="vertical-align: middle;">?</span>""", 
+                        help="""Age codes: 
+            1=0-4, 2=5-9, 3=10-14, 4=15-19, 5=20-24, 
+            6=25-29, 7=30-34, 8=35-39, 9=40-44, 10=45-49, 
+            11=50-54, 12=55-59, 13=60-64, 14=65-69, 15=70-74, 
+            16=75-79, 17=80-84, 18=80+.
+
+            See Documentation Codebooks under Census Data Links for details.""")
             
             custom_ranges = []
             range_cols = st.columns(3)
