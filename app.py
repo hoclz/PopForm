@@ -1,4 +1,4 @@
-####import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 
 # ------------------------------------------------------------------------
-# Streamlit Page Config - MUST BE FIRST STREAMLIT COMMAND
+# Streamlit Page Config
 st.set_page_config(
     page_title="Illinois Population Data Explorer",
     layout="wide",  
@@ -327,7 +327,7 @@ def display_census_links():
     codebooks_md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\n"
     codebooks_md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\n"
 
-    with st.expander("Census Data Links", expanded=False):
+    with st.expander("Census Data Links", expanded=False):  # Changed to False to be closed by default
         st.markdown("""
         **Important Links**:
         - [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
@@ -563,22 +563,17 @@ def main():
                     st.write("**Age Brackets:**", ", ".join(brackets_implicit))
         
         with col2:
-            # Custom Age Ranges with tooltip positioned closer
             col_a, col_b = st.columns([4, 1])
             with col_a:
                 st.write("**Custom Age Ranges:**")
             with col_b:
-                st.button(
-                    "❓", 
-                    key="custom_age_ranges_help", 
-                    help="""Age codes: 
+                st.button("❓", key="age_range_help", help="""Age codes: 
         1=0-4, 2=5-9, 3=10-14, 4=15-19, 5=20-24, 
         6=25-29, 7=30-34, 8=35-39, 9=40-44, 10=45-49, 
         11=50-54, 12=55-59, 13=60-64, 14=65-69, 15=70-74, 
         16=75-79, 17=80-84, 18=80+.
 
-        See Documentation Codebooks under Census Data Links for details."""
-                )
+        See Documentation Codebooks under Census Data Links for details.""")
     
             st.caption("Optional: Define custom age ranges (overrides Age Group selection)")
     
