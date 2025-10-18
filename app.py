@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import io
 import base64
 import os
+from datetime import datetime
 
 # ------------------------------------------------------------------------
 # Streamlit Page Config
@@ -46,23 +47,29 @@ st.markdown("""
     }
     .metric-card {
         background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-        padding: 1.5rem;
+        padding: 1rem;
         border-radius: 15px;
         box-shadow: 0 4px 6px rgba(13, 71, 161, 0.1);
         margin-bottom: 1rem;
         text-align: center;
         border: 1px solid #90caf9;
+        height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     .metric-value {
-        font-size: 2.5rem;
+        font-size: 2.2rem;
         font-weight: 700;
         color: #1a365d;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.3rem;
+        line-height: 1;
     }
     .metric-label {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         color: #4a5568;
         font-weight: 500;
+        line-height: 1.2;
     }
     .census-links {
         background: #e3f2fd;
@@ -290,10 +297,37 @@ def debug_data_processing(df_source, filters_applied):
         st.write(f"Counties present: {len(df_source['County'].unique())}")
 
 # ------------------------------------------------------------------------
-# Census Data Links Display Function (Updated to match reference exactly)
+# Census Data Links Display Function with Documentation Codebooks
 def display_census_links():
-    """Display census data links in expander exactly like reference code"""
-    with st.expander("Census Data Links", expanded=True):
+    """Display census data links in expander exactly like reference code, with added documentation codebooks."""
+    # List of documentation codebooks (easy to update)
+    census_docs = [
+        {"year": 2024, "period": "April 1, 2020 to July 1, 2024", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2024/CC-EST2024-ALLDATA.pdf"},
+        {"year": 2023, "period": "April 1, 2020 to July 1, 2023", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2023/CC-EST2023-ALLDATA.pdf"},
+        {"year": 2022, "period": "April 1, 2020 to July 1, 2022", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2022/cc-est2022-alldata.pdf"},
+        {"year": 2021, "period": "April 1, 2020 to July 1, 2021", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2021/cc-est2021-alldata.pdf"},
+        {"year": 2020, "period": "April 1, 2010 to July 1, 2020", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2020/cc-est2020-alldata.pdf"},
+        {"year": 2019, "period": "April 1, 2010 to July 1, 2019", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf"},
+        {"year": 2018, "period": "April 1, 2010 to July 1, 2018", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2018/cc-est2018-alldata.pdf"},
+        {"year": 2017, "period": "April 1, 2010 to July 1, 2017", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2017/cc-est2017-alldata.pdf"},
+        {"year": 2016, "period": "April 1, 2010 to July 1, 2016", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2016/cc-est2016-alldata.pdf"},
+        {"year": 2015, "period": "April 1, 2010 to July 1, 2015", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2015/cc-est2015-alldata.pdf"},
+        {"year": 2014, "period": "April 1, 2010 to July 1, 2014", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2014/cc-est2014-alldata.pdf"},
+        {"year": 2013, "period": "April 1, 2010 to July 1, 2013", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2013/cc-est2013-alldata.pdf"},
+        {"year": 2012, "period": "April 1, 2010 to July 1, 2012", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2012/cc-est2012-alldata.pdf"},
+        {"year": 2011, "period": "April 1, 2010 to July 1, 2011", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2011/cc-est2011-alldata.pdf"},
+        {"year": 2010, "period": "April 1, 2000 to July 1, 2010", "link": "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf"},
+    ]
+
+    # Build the codebooks markdown dynamically
+    codebooks_md = "**Documentation Codebooks**:\n"
+    codebooks_md += "- [File Layouts Main Page](https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/)\n"
+    for doc in census_docs:
+        codebooks_md += f"- [Vintage {doc['year']} ({doc['period']})]({doc['link']})\n"
+    codebooks_md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\n"
+    codebooks_md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\n"
+
+    with st.expander("Census Data Links", expanded=False):  # Changed to False to be closed by default
         st.markdown("""
         **Important Links**:
         - [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
@@ -303,6 +337,59 @@ def display_census_links():
         - [2020-2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
         - [RELEASE SCHEDULE](https://www.census.gov/programs-surveys/popest/about/schedule.html)
         """)
+        
+        st.markdown("---")
+        st.markdown(codebooks_md)
+
+# ------------------------------------------------------------------------
+# Function to add metadata to CSV download
+def add_metadata_to_csv(df, selected_filters):
+    """Add metadata as comments at the beginning of the CSV file"""
+    metadata_lines = [
+        "# Illinois Population Data Explorer - Export",
+        f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"# Data Source: U.S. Census Bureau Population Estimates",
+        f"# Years: {', '.join(selected_filters.get('years', []))}",
+        f"# Counties: {', '.join(selected_filters.get('counties', []))}",
+        f"# Race Filter: {selected_filters.get('race', 'All')}",
+        f"# Ethnicity: {selected_filters.get('ethnicity', 'All')}",
+        f"# Sex: {selected_filters.get('sex', 'All')}",
+        f"# Region: {selected_filters.get('region', 'None')}",
+        f"# Age Group: {selected_filters.get('age_group', 'All')}",
+        f"# Group By: {selected_filters.get('group_by', 'None')}",
+        f"# Total Records: {len(df)}",
+        f"# Total Population: {df['Count'].sum():,}" if 'Count' in df.columns else "# Total Population: N/A",
+        "#",
+        "# Note: Data are official U.S. Census Bureau estimates",
+        "# and may be subject to sampling error",
+        "#"
+    ]
+    
+    metadata = "\n".join(metadata_lines) + "\n"
+    csv_data = df.to_csv(index=False)
+    return metadata + csv_data
+
+# ------------------------------------------------------------------------
+# Function to ensure county names are properly displayed
+def ensure_county_names(df, counties_map):
+    """Ensure county codes are converted to county names in the output"""
+    if df is None or df.empty:
+        return df
+    
+    # Create reverse mapping from code to name
+    county_code_to_name = {v: k for k, v in counties_map.items()}
+    
+    # Check if we have county code column that needs conversion
+    if 'County Code' in df.columns and 'County Name' not in df.columns:
+        df['County Name'] = df['County Code'].map(county_code_to_name).fillna(df['County Code'])
+    
+    # If we have a generic 'County' column with codes, convert to names
+    if 'County' in df.columns:
+        # Check if values are numeric codes
+        if df['County'].dtype in [np.int64, np.float64] or all(isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit()) for x in df['County'].dropna() if x != 'All Counties' and x != 'Selected Counties'):
+            df['County'] = df['County'].apply(lambda x: county_code_to_name.get(int(x), x) if str(x).isdigit() and int(x) in county_code_to_name else x)
+    
+    return df
 
 # ------------------------------------------------------------------------
 # Main Application
@@ -314,6 +401,8 @@ def main():
     # Initialize session state
     if 'report_df' not in st.session_state:
         st.session_state.report_df = pd.DataFrame()
+    if 'selected_filters' not in st.session_state:
+        st.session_state.selected_filters = {}
     
     # Debug mode
     debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
@@ -521,16 +610,18 @@ def main():
     with col2:
         if st.button("🗑️ Clear Results", use_container_width=True):
             st.session_state.report_df = pd.DataFrame()
+            st.session_state.selected_filters = {}
             st.rerun()
     
     with col3:
         download_disabled = st.session_state.report_df.empty
         if st.button("💾 Download Data", use_container_width=True, disabled=download_disabled):
             if not st.session_state.report_df.empty:
-                csv_data = st.session_state.report_df.to_csv(index=False)
+                # Add metadata to CSV
+                csv_with_metadata = add_metadata_to_csv(st.session_state.report_df, st.session_state.selected_filters)
                 st.download_button(
                     label="📥 Download CSV",
-                    data=csv_data,
+                    data=csv_with_metadata,
                     file_name="illinois_population_data.csv",
                     mime="text/csv",
                     key="download_btn"
@@ -545,6 +636,18 @@ def main():
         if not selected_counties:
             st.warning("⚠️ Please select at least one county.")
             st.stop()
+        
+        # Store selected filters for metadata
+        st.session_state.selected_filters = {
+            'years': selected_years,
+            'counties': selected_counties,
+            'race': selected_race_display,
+            'ethnicity': selected_ethnicity,
+            'sex': selected_sex,
+            'region': selected_region,
+            'age_group': selected_agegroup_display,
+            'group_by': grouping_var
+        }
         
         # Convert selections for backend processing
         if selected_race_display == "All":
@@ -627,6 +730,8 @@ def main():
                 # Combine all results
                 if all_frames:
                     final_df = pd.concat(all_frames, ignore_index=True)
+                    # Ensure county names are properly displayed
+                    final_df = ensure_county_names(final_df, counties_map)
                     st.session_state.report_df = final_df
                 else:
                     final_df = pd.DataFrame()
@@ -656,10 +761,10 @@ def main():
             st.dataframe(st.session_state.report_df, use_container_width=True)
             
             # Add download button
-            csv_data = st.session_state.report_df.to_csv(index=False)
+            csv_with_metadata = add_metadata_to_csv(st.session_state.report_df, st.session_state.selected_filters)
             st.download_button(
                 label="📥 Download CSV",
-                data=csv_data,
+                data=csv_with_metadata,
                 file_name="illinois_population_data.csv",
                 mime="text/csv",
             )
@@ -670,15 +775,15 @@ def main():
         st.dataframe(st.session_state.report_df, use_container_width=True)
         
         # Download button for existing results
-        csv_data = st.session_state.report_df.to_csv(index=False)
+        csv_with_metadata = add_metadata_to_csv(st.session_state.report_df, st.session_state.selected_filters)
         st.download_button(
             label="📥 Download CSV",
-            data=csv_data,
+            data=csv_with_metadata,
             file_name="illinois_population_data.csv",
             mime="text/csv",
         )
 
-    # Display Census Links
+    # Display Census Links (closed by default)
     display_census_links()
 
     # Footer
