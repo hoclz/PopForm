@@ -155,13 +155,10 @@ def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str, int]) -> pd.Da
         return df
     id_to_name = {v: k for k, v in counties_map.items()}
 
-    # If we have County (code) column and we're not labeling by County (free-text),
-    # map it where appropriate.
-    if 'County Code' in df.columns:
-        if 'County Name' not in df.columns:
-            df['County Name'] = df['County Code'].map(id_to_name).fillna(df['County Code'])
+    if 'County Code' in df.columns and 'County Name' not in df.columns:
+        df['County Name'] = df['County Code'].map(id_to_name).fillna(df['County Code'])
+
     if 'County' in df.columns:
-        # Might be label (e.g., "All Counties") or a code; keep labels as-is
         def _map_val(v):
             try:
                 if isinstance(v, (int, np.integer)) and v in id_to_name:
@@ -172,6 +169,7 @@ def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str, int]) -> pd.Da
                 pass
             return v
         df['County'] = df['County'].apply(_map_val)
+
     return df
 
 # ------------------------------------------------------------------------
@@ -304,10 +302,15 @@ def aggregate_multi(
     agegroup_map_implicit: Dict[str, List[str]]
 ) -> pd.DataFrame:
 
-    # Empty base frame
+    # Clean incoming grouping vars: remove sentinel "All"
+    grouping_vars_clean = [g for g in grouping_vars if g != "All"]
+
+    # Convenience for empty result
     def _empty():
-        base = (["County"] if "County" not in grouping_vars else [])
-        return pd.DataFrame(columns=base + grouping_vars + ["Count", "Percent", "Year"])
+        base = (["County"] if "County" not in grouping_vars_clean else [])
+        # replace Age with AgeGroup in header for consistency if present
+        cols = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
+        return pd.DataFrame(columns=base + cols + ["Count", "Percent", "Year"])
 
     if df_source is None or df_source.empty:
         return _empty()
@@ -316,14 +319,26 @@ def aggregate_multi(
     if total_population == 0:
         return _empty()
 
-    include_age = "Age" in grouping_vars
+    # If no grouping (i.e., "All") → return totals row (no groupby!)
+    if len(grouping_vars_clean) == 0:
+        out = pd.DataFrame({
+            "Count": [int(total_population)],
+            "Percent": [100.0],
+            "Year": [str(year_str)]
+        })
+        # Since we're not grouping by County, add the friendly label
+        out.insert(0, "County", county_label)
+        out = ensure_county_names(out, counties_map)
+        return out
+
+    include_age = "Age" in grouping_vars_clean
     df = attach_agegroup_column(
         df_source, include_age, agegroup_for_backend, custom_ranges, agegroup_map_implicit
     )
 
-    # Build real group fields (replace Age→AgeGroup; keep County as 'County' for grouping)
+    # Build real group fields (replace Age→AgeGroup)
     group_fields: List[str] = []
-    for g in grouping_vars:
+    for g in grouping_vars_clean:
         group_fields.append("AgeGroup" if g == "Age" else g)
 
     # Group and sum
@@ -338,38 +353,32 @@ def aggregate_multi(
     grouped["Percent"] = (grouped["Count"] / total_population * 100.0).round(1)
 
     # If NOT grouping by County → add friendly label column
-    if "County" not in grouping_vars:
+    if "County" not in grouping_vars_clean:
         grouped.insert(0, "County", county_label)
         grouped = ensure_county_names(grouped, counties_map)
     else:
-        # If grouping by County, rename code column and add name
+        # If grouping by County, rename and add names
         if "County" in grouped.columns:
             grouped.rename(columns={"County": "County Code"}, inplace=True)
         grouped = ensure_county_names(grouped, counties_map)
-
-        # Also update group_fields to reflect the rename for downstream column ordering
+        # Update fields so ordering uses "County Code"
         group_fields = ["County Code" if g == "County" else g for g in group_fields]
 
     # Reorder columns ONLY by existing ones to avoid KeyErrors
     existing = list(grouped.columns)
     col_order: List[str] = []
 
-    # Label column (present only when not grouped by County)
     if "County" in existing:
         col_order.append("County")
-
-    # Code + Name (present only when grouped by County)
     if "County Code" in existing:
         col_order += ["County Code"]
         if "County Name" in existing:
             col_order += ["County Name"]
 
-    # Add group fields in a stable order if they exist
     for c in group_fields:
         if c in existing and c not in col_order:
             col_order.append(c)
 
-    # Metrics at the end
     for c in ["Count", "Percent", "Year"]:
         if c in existing:
             col_order.append(c)
@@ -399,6 +408,7 @@ def main():
      agegroup_map_explicit,
      agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
 
+    # Quick metrics
     st.markdown("## 📊 Data Overview")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -511,21 +521,28 @@ def main():
     st.markdown('<div class="section-header">📈 Output Configuration</div>', unsafe_allow_html=True)
     oc1, oc2 = st.columns(2)
     with oc1:
+        # ✅ Default is "All"
         grouping_vars = st.multiselect(
             "Group Results By:",
-            ["Age", "Race", "Ethnicity", "Sex", "County"],
-            default=[],
-            help="Select one or more columns (e.g., Race + Sex)."
+            ["All", "Age", "Race", "Ethnicity", "Sex", "County"],
+            default=["All"],
+            help="Choose 'All' for totals only, or select columns (e.g., Race + Sex)."
         )
+        # If "All" is selected with others, force "All" only
+        if "All" in grouping_vars and len(grouping_vars) > 1:
+            st.info("Using 'All' (totals only). Other selections ignored.")
+            grouping_vars = ["All"]
     with oc2:
         include_breakdown = st.checkbox(
             "Include Individual County Breakdowns",
             value=True,
             help="Show a separate table for each selected county in addition to the combined results."
         )
-        if "County" in grouping_vars and include_breakdown:
-            st.info("When grouping by County, individual county breakdowns are redundant and will be skipped.")
-            include_breakdown = False
+        if "County" in grouping_vars:
+            # (won't happen when grouping_vars == ["All"], but keep guard)
+            if include_breakdown:
+                st.info("When grouping by County, individual county breakdowns are redundant and will be skipped.")
+                include_breakdown = False
 
     # Buttons
     st.markdown("---")
@@ -564,7 +581,7 @@ def main():
                 for year in selected_years:
                     df_src = backend_main_processing.process_population_data(
                         data_folder=DATA_FOLDER,
-                        agegroup_map_explicit=frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)[4],  # not used here but kept for API parity
+                        agegroup_map_explicit=agegroup_map_explicit,
                         counties_map=counties_map,
                         selected_years=[year],
                         selected_counties=county_list,
@@ -579,13 +596,13 @@ def main():
                         debug_data_processing(df_src, f"{county_label} · {year}")
                     block = aggregate_multi(
                         df_source=df_src,
-                        grouping_vars=grouping_vars,
+                        grouping_vars=grouping_vars,  # may be ["All"]
                         year_str=str(year),
                         county_label=county_label,
                         counties_map=counties_map,
                         agegroup_for_backend=agegroup_for_backend,
                         custom_ranges=custom_ranges if enable_custom_ranges else [],
-                        agegroup_map_implicit=frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)[5]
+                        agegroup_map_implicit=agegroup_map_implicit
                     )
                     if not block.empty:
                         frames.append(block)
