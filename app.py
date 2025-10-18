@@ -370,24 +370,30 @@ def add_metadata_to_csv(df, selected_filters):
     return metadata + csv_data
 
 # ------------------------------------------------------------------------
-# Function to ensure county names are properly displayed
+# Function to ensure county names are properly displayed - FIXED BASED ON OLD CODE
 def ensure_county_names(df, counties_map):
     """Ensure county codes are converted to county names in the output"""
     if df is None or df.empty:
         return df
     
-    # Create reverse mapping from code to name
-    county_code_to_name = {v: k for k, v in counties_map.items()}
+    # Create reverse mapping from code to name (EXACTLY like old code)
+    COUNTY_ID_TO_NAME = {v: k for k, v in counties_map.items()}
     
     # Check if we have county code column that needs conversion
     if 'County Code' in df.columns and 'County Name' not in df.columns:
-        df['County Name'] = df['County Code'].map(county_code_to_name).fillna(df['County Code'])
+        df['County Name'] = df['County Code'].map(COUNTY_ID_TO_NAME).fillna(df['County Code'])
     
     # If we have a generic 'County' column with codes, convert to names
     if 'County' in df.columns:
-        # Check if values are numeric codes
-        if df['County'].dtype in [np.int64, np.float64] or all(isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit()) for x in df['County'].dropna() if x != 'All Counties' and x != 'Selected Counties'):
-            df['County'] = df['County'].apply(lambda x: county_code_to_name.get(int(x), x) if str(x).isdigit() and int(x) in county_code_to_name else x)
+        # Check if values are numeric codes or county names that need mapping
+        for idx, county_val in df['County'].items():
+            if county_val in COUNTY_ID_TO_NAME.values():  # Already a name
+                continue
+            elif str(county_val).isdigit() and int(county_val) in COUNTY_ID_TO_NAME:
+                df.at[idx, 'County'] = COUNTY_ID_TO_NAME[int(county_val)]
+            elif county_val in counties_map:  # It's a county name that maps to code
+                # Keep the original name since it's already correct
+                continue
     
     return df
 
@@ -428,6 +434,10 @@ def main():
     except Exception as e:
         st.sidebar.error(f"❌ Error loading data: {e}")
         return
+
+    # County ID <-> Name maps (EXACTLY like old code)
+    COUNTY_NAME_TO_ID = counties_map  
+    COUNTY_ID_TO_NAME = {v: k for k, v in COUNTY_NAME_TO_ID.items()}
 
     # Quick Stats Overview
     st.markdown("## 📊 Data Overview")
@@ -700,7 +710,8 @@ def main():
                                     age_df.insert(0, "County", county_label)
                                 frames_for_years.append(age_df)
                             else:
-                                group_df = aggregate_by_field(df_source, grouping_var, year, counties_map)
+                                # Use COUNTY_ID_TO_NAME mapping exactly like old code
+                                group_df = aggregate_by_field(df_source, grouping_var, year, COUNTY_ID_TO_NAME)
                                 if grouping_var != "County":
                                     if not group_df.empty:
                                         group_df.insert(0, "County", county_label)
@@ -730,7 +741,7 @@ def main():
                 # Combine all results
                 if all_frames:
                     final_df = pd.concat(all_frames, ignore_index=True)
-                    # Ensure county names are properly displayed
+                    # Ensure county names are properly displayed using the fixed function
                     final_df = ensure_county_names(final_df, counties_map)
                     st.session_state.report_df = final_df
                 else:
