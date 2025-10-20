@@ -174,6 +174,45 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         if c in existing: col_order.append(c)
     return grouped[col_order]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Census links expander (default closed). Will appear in RIGHT column.
+def display_census_links():
+    docs = [
+        (2024, "April 1, 2020 to July 1, 2024", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2024/CC-EST2024-ALLDATA.pdf"),
+        (2023, "April 1, 2020 to July 1, 2023", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2023/CC-EST2023-ALLDATA.pdf"),
+        (2022, "April 1, 2020 to July 1, 2022", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2022/cc-est2022-alldata.pdf"),
+        (2021, "April 1, 2020 to July 1, 2021", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2021/cc-est2021-alldata.pdf"),
+        (2020, "April 1, 2010 to July 1, 2020", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2020/cc-est2020-alldata.pdf"),
+        (2019, "April 1, 2010 to July 1, 2019", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf"),
+        (2018, "April 1, 2010 to July 1, 2018", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2018/cc-est2018-alldata.pdf"),
+        (2017, "April 1, 2010 to July 1, 2017", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2017/cc-est2017-alldata.pdf"),
+        (2016, "April 1, 2010 to July 1, 2016", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2016/cc-est2016-alldata.pdf"),
+        (2015, "April 1, 2010 to July 1, 2015", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2015/cc-est2015-alldata.pdf"),
+        (2014, "April 1, 2010 to July 1, 2014", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2014/cc-est2014-alldata.pdf"),
+        (2013, "April 1, 2010 to July 1, 2013", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2013/cc-est2013-alldata.pdf"),
+        (2012, "April 1, 2010 to July 1, 2012", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2012/cc-est2012-alldata.pdf"),
+        (2011, "April 1, 2010 to July 1, 2011", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2011/cc-est2011-alldata.pdf"),
+        (2010, "April 1, 2000 to July 1, 2010", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf"),
+    ]
+
+    with st.expander("Census Data Links", expanded=False):
+        st.markdown("""
+**Important Links**:
+- [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
+- [2000–2010 Intercensal County](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
+- [2010–2020 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/)
+- [2020–2023 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/)
+- [2020–2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
+- [Release Schedule](https://www.census.gov/programs-surveys/popest/about/schedule.html)
+""")
+        st.markdown("---")
+        md = "**Documentation Codebooks**:\n- [File Layouts Main Page](https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/)\n"
+        for y, p, u in docs:
+            md += f"- [Vintage {y} ({p})]({u})\n"
+        md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\n"
+        md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\n"
+        st.markdown(md)
+
 def add_metadata_to_csv(df: pd.DataFrame, selected_filters: Dict) -> str:
     meta = [
         "# Illinois Population Data Explorer - Export",
@@ -193,7 +232,7 @@ def add_metadata_to_csv(df: pd.DataFrame, selected_filters: Dict) -> str:
         "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.",
         "#"
     ]
-    return "\n".join(meta) + "\n" + df.to_csv(index=False)
+    return "\\n".join(meta) + "\\n" + df.to_csv(index=False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App
@@ -205,7 +244,7 @@ def main():
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data("./form_control_UI_data.csv")
 
-    # Sidebar controls (moved here)
+    # Sidebar controls (moved here). This already includes "Group Results By".
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
     # Metrics
@@ -218,19 +257,24 @@ def main():
     with c3:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
     with c4:
-        # FIX: proper f-string (no stray `f(` call)
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
-    # Action buttons (with fallback for older Streamlit without `type=`)
+    # Buttons + Census links row
     st.markdown("---")
-    try:
-        go = st.button("🚀 Generate Report", use_container_width=True, type="primary")
-    except TypeError:
-        go = st.button("🚀 Generate Report", use_container_width=True)
-    if st.button("🗑️ Clear Results", use_container_width=True):
-        st.session_state.report_df = pd.DataFrame()
-        st.session_state.selected_filters = {}
-        st.rerun()
+    left_col, right_col = st.columns([3, 2])
+    with left_col:
+        try:
+            go = st.button("🚀 Generate Report", use_container_width=True, type="primary")
+        except TypeError:
+            go = st.button("🚀 Generate Report", use_container_width=True)
+        clear_clicked = st.button("🗑️ Clear Results", use_container_width=True)
+        if clear_clicked:
+            st.session_state.report_df = pd.DataFrame()
+            st.session_state.selected_filters = {}
+            st.rerun()
+    with right_col:
+        # Keep Census Data Links to the RIGHT under Clear Results (default closed)
+        display_census_links()
 
     # Keep state
     st.session_state.setdefault("report_df", pd.DataFrame())
@@ -305,6 +349,7 @@ def main():
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
         st.dataframe(st.session_state.report_df, use_container_width=True)
+
         csv_text = add_metadata_to_csv(st.session_state.report_df, st.session_state.selected_filters)
         st.download_button("📥 Download CSV", data=csv_text, file_name="illinois_population_data.csv", mime="text/csv")
 
