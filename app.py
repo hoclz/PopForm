@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -21,6 +20,23 @@ st.markdown("""
         height:120px; display:flex; flex-direction:column; justify-content:center; }
     .metric-value { font-size: 2.2rem; font-weight: 700; color:#1a365d; margin-bottom:.3rem; line-height:1; }
     .metric-label { font-size: .85rem; color:#4a5568; font-weight: 500; line-height:1.2; }
+
+    /* ----- Brick divider (15px wide) ----- */
+    .kpi-brick {
+        width: 15px; min-width: 15px; height: 120px;
+        background: #bfbfbf;               /* concrete color */
+        border-radius: 4px;
+        box-shadow: inset 0 0 0 1px #9e9e9e, 0 1px 2px rgba(0,0,0,.08);
+        margin: 0 auto;                     /* center inside its column */
+        position: relative;
+    }
+    /* add two shallow grooves to hint at a cinder block */
+    .kpi-brick::before, .kpi-brick::after {
+        content: ""; position: absolute; left: 3px; right: 3px; height: 4px;
+        background: rgba(0,0,0,0.08); border-radius: 2px;
+    }
+    .kpi-brick::before { top: 32px; }
+    .kpi-brick::after  { bottom: 32px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -191,17 +207,29 @@ def main():
 
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
+    # ---- KPI row with 15px bricks between cards ----
     st.markdown("## 📊 Data Overview")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, b1, c2, b2, c3, b3, c4 = st.columns([1, 0.07, 1, 0.07, 1, 0.07, 1])
+
     with c1:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
+    with b1:
+        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
+
     with c2:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
+    with b2:
+        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
+
     with c3:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
+    with b3:
+        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
+
     with c4:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
+    # Buttons + Census links row (Census links on the RIGHT, default closed)
     st.markdown("---")
     left_col, right_col = st.columns([3, 2])
     with left_col:
