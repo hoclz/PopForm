@@ -5,11 +5,9 @@ import numpy as np
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Page setup
 st.set_page_config(page_title="Illinois Population Data Explorer", layout="wide", page_icon="🏛️")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Styling
 st.markdown("""
 <style>
@@ -26,24 +24,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# External modules (your project)
+# External modules
 try:
     import backend_main_processing
     import frontend_data_loader
     import frontend_bracket_utils
-    from frontend_sidbar import render_sidebar_controls, display_census_links
+    from frontend_sidebar import render_sidebar_controls, display_census_links
 except Exception as e:
     st.error(f"Import error: {e}")
     st.stop()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Paths
 DATA_FOLDER = "./data"
 FORM_CONTROL_PATH = "./form_control_UI_data.csv"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Race mapping for display (used post‑aggregation)
 RACE_DISPLAY_TO_CODE = {
     "Two or More Races": "TOM",
     "American Indian and Alaska Native": "AIAN",
@@ -54,7 +47,6 @@ RACE_DISPLAY_TO_CODE = {
 }
 RACE_CODE_TO_DISPLAY = {v: k for k, v in RACE_DISPLAY_TO_CODE.items()}
 
-# Age code → label lookup (1..18)
 CODE_TO_BRACKET = {
     1:"0-4",2:"5-9",3:"10-14",4:"15-19",5:"20-24",6:"25-29",7:"30-34",8:"35-39",9:"40-44",
     10:"45-49",11:"50-54",12:"55-59",13:"60-64",14:"65-69",15:"70-74",16:"75-79",17:"80-84",18:"80+",
@@ -62,19 +54,23 @@ CODE_TO_BRACKET = {
 
 def combine_codes_to_label(codes: List[int]) -> str:
     codes = sorted(set(int(c) for c in codes))
-    if not codes: return ""
+    if not codes:
+        return ""
     lows, highs = [], []
     for c in codes:
         s = CODE_TO_BRACKET.get(c, "")
         if "-" in s:
             a, b = s.split("-"); lows.append(int(a)); highs.append(int(b))
-        elif s.endswith("+"): lows.append(int(s[:-1])); highs.append(999)
-    if not lows: return "-".join(str(c) for c in codes)
+        elif s.endswith("+"):
+            lows.append(int(s[:-1])); highs.append(999)
+    if not lows:
+        return "-".join(str(c) for c in codes)
     lo, hi = min(lows), max(highs)
     return f"{lo}+" if hi >= 999 else f"{lo}-{hi}"
 
 def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.DataFrame:
-    if df is None or df.empty: return df
+    if df is None or df.empty:
+        return df
     id_to_name = {v:k for k,v in counties_map.items()}
     if 'County Code' in df.columns and 'County Name' not in df.columns:
         df['County Name'] = df['County Code'].map(id_to_name).fillna(df['County Code'])
@@ -83,26 +79,30 @@ def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.Dat
             try:
                 if isinstance(v, (int, np.integer)) and v in id_to_name: return id_to_name[v]
                 if isinstance(v, str) and v.isdigit() and int(v) in id_to_name: return id_to_name[int(v)]
-            except Exception: pass
+            except Exception:
+                pass
             return v
         df['County'] = df['County'].apply(_map)
     return df
 
 def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_backend: Optional[str],
                            custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
-    if not include_age: return df
+    if not include_age:
+        return df
     df = df.copy()
     if custom_ranges:
         df['AgeGroup'] = np.nan
         covered = np.zeros(len(df), dtype=bool)
         for (mn,mx) in custom_ranges:
             mn_i, mx_i = max(1,int(mn)), min(18,int(mx))
-            if mn_i > mx_i: continue
+            if mn_i > mx_i:
+                continue
             codes = list(range(mn_i, mx_i+1))
             label = combine_codes_to_label(codes)
             mask = df['Age'].between(mn_i, mx_i)
             df.loc[mask, 'AgeGroup'] = label; covered |= mask.to_numpy()
-        if (~covered).any(): df.loc[~covered, 'AgeGroup'] = "Other Ages"
+        if (~covered).any():
+            df.loc[~covered, 'AgeGroup'] = "Other Ages"
         return df
     if agegroup_for_backend:
         df['AgeGroup'] = np.nan
@@ -117,10 +117,13 @@ def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_bac
                     a,b = bexpr.split("-"); m = df['Age'].between(int(a), int(b))
                 elif bexpr.endswith("+") and bexpr[:-1].isdigit():
                     m = df['Age'] >= int(bexpr[:-1])
-                if m is not None: df.loc[m, 'AgeGroup'] = bexpr
-        if df['AgeGroup'].isna().any(): df['AgeGroup'] = df['AgeGroup'].fillna("Other Ages")
+                if m is not None:
+                    df.loc[m, 'AgeGroup'] = bexpr
+        if df['AgeGroup'].isna().any():
+            df['AgeGroup'] = df['AgeGroup'].fillna("Other Ages")
         return df
-    df['AgeGroup'] = "All Ages"; return df
+    df['AgeGroup'] = "All Ages"
+    return df
 
 def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str: str,
                     county_label: str, counties_map: Dict[str,int], agegroup_for_backend: Optional[str],
@@ -130,9 +133,11 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         base = (["County"] if "County" not in grouping_vars_clean else [])
         cols = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
         return pd.DataFrame(columns=base + cols + ["Count", "Percent", "Year"])
-    if df_source is None or df_source.empty: return _empty()
+    if df_source is None or df_source.empty:
+        return _empty()
     total_population = df_source["Count"].sum()
-    if total_population == 0: return _empty()
+    if total_population == 0:
+        return _empty()
     if len(grouping_vars_clean) == 0:
         out = pd.DataFrame({"Count":[int(total_population)], "Percent":[100.0], "Year":[str(year_str)]})
         out.insert(0, "County", county_label)
@@ -146,13 +151,16 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         grouped["Race"] = grouped["Race"].map({v:k for k,v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
     grouped["Year"] = str(year_str)
     if "County" in grouping_vars_clean:
-        if "County" in grouped.columns: grouped.rename(columns={"County":"County Code"}, inplace=True)
+        if "County" in grouped.columns:
+            grouped.rename(columns={"County":"County Code"}, inplace=True)
         grouped = ensure_county_names(grouped, counties_map)
         denom_keys = ["Year","County Code"]
-        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns: denom_keys.append("AgeGroup")
+        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns:
+            denom_keys.append("AgeGroup")
     else:
         denom_keys = ["Year"]
-        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns: denom_keys.append("AgeGroup")
+        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns:
+            denom_keys.append("AgeGroup")
     if denom_keys:
         den = grouped.groupby(denom_keys, dropna=False)["Count"].transform("sum")
         grouped["Percent"] = np.where(den > 0, (grouped["Count"]/den*100).round(1), 0.0)
@@ -174,71 +182,26 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         if c in existing: col_order.append(c)
     return grouped[col_order]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Census links expander (default closed). Will appear in RIGHT column.
-def display_census_links():
-    docs = [
-        (2024, "April 1, 2020 to July 1, 2024", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2024/CC-EST2024-ALLDATA.pdf"),
-        (2023, "April 1, 2020 to July 1, 2023", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2023/CC-EST2023-ALLDATA.pdf"),
-        (2022, "April 1, 2020 to July 1, 2022", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2022/cc-est2022-alldata.pdf"),
-        (2021, "April 1, 2020 to July 1, 2021", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2021/cc-est2021-alldata.pdf"),
-        (2020, "April 1, 2010 to July 1, 2020", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2020/cc-est2020-alldata.pdf"),
-        (2019, "April 1, 2010 to July 1, 2019", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2019/cc-est2019-alldata.pdf"),
-        (2018, "April 1, 2010 to July 1, 2018", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2018/cc-est2018-alldata.pdf"),
-        (2017, "April 1, 2010 to July 1, 2017", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2017/cc-est2017-alldata.pdf"),
-        (2016, "April 1, 2010 to July 1, 2016", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2016/cc-est2016-alldata.pdf"),
-        (2015, "April 1, 2010 to July 1, 2015", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2015/cc-est2015-alldata.pdf"),
-        (2014, "April 1, 2010 to July 1, 2014", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2014/cc-est2014-alldata.pdf"),
-        (2013, "April 1, 2010 to July 1, 2013", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2013/cc-est2013-alldata.pdf"),
-        (2012, "April 1, 2010 to July 1, 2012", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2012/cc-est2012-alldata.pdf"),
-        (2011, "April 1, 2010 to July 1, 2011", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2011/cc-est2011-alldata.pdf"),
-        (2010, "April 1, 2000 to July 1, 2010", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf"),
-    ]
-
-    with st.expander("Census Data Links", expanded=False):
-        st.markdown(\"\"\"
-**Important Links**:
-- [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
-- [2000–2010 Intercensal County](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
-- [2010–2020 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/asrh/)
-- [2020–2023 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/)
-- [2020–2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
-- [Release Schedule](https://www.census.gov/programs-surveys/popest/about/schedule.html)
-\"\"\")
-        st.markdown("---")
-        md = "**Documentation Codebooks**:\\n- [File Layouts Main Page](https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/)\\n"
-        for y, p, u in docs:
-            md += f"- [Vintage {y} ({p})]({u})\\n"
-        md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\\n"
-        md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\\n"
-        st.markdown(md)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# App
 def main():
     st.markdown('<div class="main-header">🏛️ Illinois Population Data Explorer</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Analyze demographic trends across Illinois counties from 2000–2024</div>', unsafe_allow_html=True)
 
-    # Load form control data (years, races, counties, age sets…)
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data("./form_control_UI_data.csv")
 
-    # Sidebar controls (all closed by default per request)
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
-    # Metrics
     st.markdown("## 📊 Data Overview")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
     with c2:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
     with c3:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
     with c4:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
-    # Buttons + Census links row (Census links on the RIGHT, default closed)
     st.markdown("---")
     left_col, right_col = st.columns([3, 2])
     with left_col:
@@ -254,11 +217,9 @@ def main():
     with right_col:
         display_census_links()
 
-    # Keep state
     st.session_state.setdefault("report_df", pd.DataFrame())
     st.session_state.setdefault("selected_filters", {})
 
-    # Generate
     if go:
         if not choices["selected_years"]:
             st.warning("⚠️ Please select at least one year."); st.stop()
@@ -303,7 +264,8 @@ def main():
                         custom_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                         agegroup_map_implicit=agegroup_map_implicit,
                     )
-                    if not block.empty: frames.append(block)
+                    if not block.empty:
+                        frames.append(block)
                 return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
             all_frames = []
@@ -317,18 +279,17 @@ def main():
             if choices["include_breakdown"] and "All" not in choices["selected_counties"]:
                 for cty in choices["selected_counties"]:
                     cdf = build_block([cty], cty)
-                    if not cdf.empty: all_frames.append(cdf)
+                    if not cdf.empty:
+                        all_frames.append(cdf)
 
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
 
-    # Results block
     if not st.session_state.report_df.empty:
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
         st.dataframe(st.session_state.report_df, use_container_width=True)
 
-        # CSV with metadata block
         meta = [
             "# Illinois Population Data Explorer - Export",
             f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -347,7 +308,7 @@ def main():
             "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.",
             "#"
         ]
-        csv_text = "\\n".join(meta) + "\\n" + st.session_state.report_df.to_csv(index=False)
+        csv_text = "\n".join(meta) + "\n" + st.session_state.report_df.to_csv(index=False)
         st.download_button("📥 Download CSV", data=csv_text, file_name="illinois_population_data.csv", mime="text/csv")
 
     st.markdown("---")
