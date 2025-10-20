@@ -193,7 +193,7 @@ def add_metadata_to_csv(df: pd.DataFrame, selected_filters: Dict) -> str:
         "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.",
         "#"
     ]
-    return "\\n".join(meta) + "\\n" + df.to_csv(index=False)
+    return "\n".join(meta) + "\n" + df.to_csv(index=False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App
@@ -212,17 +212,20 @@ def main():
     st.markdown("## 📊 Data Overview")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
     with c2:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
     with c3:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
     with c4:
-        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>\"\"\", unsafe_allow_html=True)
+        st.markdown(f("""<div class="metric-card"><div class="metric-value">{}</div><div class="metric-label">Age Groups</div></div>""".format(len(agegroups_list_raw))), unsafe_allow_html=True)
 
-    # Action buttons
+    # Action buttons (with fallback for older Streamlit without `type=`)
     st.markdown("---")
-    go = st.button("🚀 Generate Report", use_container_width=True, type="primary")
+    try:
+        go = st.button("🚀 Generate Report", use_container_width=True, type="primary")
+    except TypeError:
+        go = st.button("🚀 Generate Report", use_container_width=True)
     if st.button("🗑️ Clear Results", use_container_width=True):
         st.session_state.report_df = pd.DataFrame()
         st.session_state.selected_filters = {}
