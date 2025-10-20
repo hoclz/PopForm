@@ -21,10 +21,10 @@ def render_sidebar_controls(
     agegroup_map_implicit,
     agegroups_list_raw=None,
 ):
-    \"\"\"Render the entire Query Builder + Output Configuration in the *sidebar*.
+    """Render the entire Query Builder + Output Configuration in the *sidebar*.
 
     Returns a dict of all chosen filters/settings. This keeps app.py clean.
-    \"\"\"
+    """
     sb = st.sidebar
     debug_mode = sb.checkbox("Debug Mode", value=False)
 
