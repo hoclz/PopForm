@@ -32,7 +32,7 @@ try:
     import backend_main_processing
     import frontend_data_loader
     import frontend_bracket_utils
-    from frontend_main import render_sidebar_controls
+    from frontend_sidbar import render_sidebar_controls, display_census_links
 except Exception as e:
     st.error(f"Import error: {e}")
     st.stop()
@@ -43,7 +43,7 @@ DATA_FOLDER = "./data"
 FORM_CONTROL_PATH = "./form_control_UI_data.csv"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Race mapping for display
+# Race mapping for display (used post‑aggregation)
 RACE_DISPLAY_TO_CODE = {
     "Two or More Races": "TOM",
     "American Indian and Alaska Native": "AIAN",
@@ -196,7 +196,7 @@ def display_census_links():
     ]
 
     with st.expander("Census Data Links", expanded=False):
-        st.markdown("""
+        st.markdown(\"\"\"
 **Important Links**:
 - [Census Datasets](https://www2.census.gov/programs-surveys/popest/datasets/)
 - [2000–2010 Intercensal County](https://www2.census.gov/programs-surveys/popest/datasets/2000-2010/intercensal/county/)
@@ -204,35 +204,14 @@ def display_census_links():
 - [2020–2023 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/asrh/)
 - [2020–2024 County ASRH](https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/asrh/)
 - [Release Schedule](https://www.census.gov/programs-surveys/popest/about/schedule.html)
-""")
+\"\"\")
         st.markdown("---")
-        md = "**Documentation Codebooks**:\n- [File Layouts Main Page](https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/)\n"
+        md = "**Documentation Codebooks**:\\n- [File Layouts Main Page](https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/)\\n"
         for y, p, u in docs:
-            md += f"- [Vintage {y} ({p})]({u})\n"
-        md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\n"
-        md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\n"
+            md += f"- [Vintage {y} ({p})]({u})\\n"
+        md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\\n"
+        md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\\n"
         st.markdown(md)
-
-def add_metadata_to_csv(df: pd.DataFrame, selected_filters: Dict) -> str:
-    meta = [
-        "# Illinois Population Data Explorer - Export",
-        f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "# Data Source: U.S. Census Bureau Population Estimates",
-        f"# Years: {', '.join(selected_filters.get('years', []))}",
-        f"# Counties: {', '.join(selected_filters.get('counties', []))}",
-        f"# Race Filter: {selected_filters.get('race', 'All')}",
-        f"# Ethnicity: {selected_filters.get('ethnicity', 'All')}",
-        f"# Sex: {selected_filters.get('sex', 'All')}",
-        f"# Region: {selected_filters.get('region', 'None')}",
-        f"# Age Group: {selected_filters.get('age_group', 'All')}",
-        f"# Group By: {', '.join(selected_filters.get('group_by', [])) or 'None'}",
-        f"# Total Records: {len(df)}",
-        f"# Total Population: {df['Count'].sum():,}" if 'Count' in df.columns else "# Total Population: N/A",
-        "#",
-        "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.",
-        "#"
-    ]
-    return "\\n".join(meta) + "\\n" + df.to_csv(index=False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App
@@ -244,22 +223,22 @@ def main():
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data("./form_control_UI_data.csv")
 
-    # Sidebar controls (moved here). This already includes "Group Results By".
+    # Sidebar controls (all closed by default per request)
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
     # Metrics
     st.markdown("## 📊 Data Overview")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
+        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>\"\"\", unsafe_allow_html=True)
     with c2:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
+        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>\"\"\", unsafe_allow_html=True)
     with c3:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
+        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>\"\"\", unsafe_allow_html=True)
     with c4:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
+        st.markdown(f\"\"\"<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>\"\"\", unsafe_allow_html=True)
 
-    # Buttons + Census links row
+    # Buttons + Census links row (Census links on the RIGHT, default closed)
     st.markdown("---")
     left_col, right_col = st.columns([3, 2])
     with left_col:
@@ -273,7 +252,6 @@ def main():
             st.session_state.selected_filters = {}
             st.rerun()
     with right_col:
-        # Keep Census Data Links to the RIGHT under Clear Results (default closed)
         display_census_links()
 
     # Keep state
@@ -350,7 +328,26 @@ def main():
         st.markdown("### 📋 Results")
         st.dataframe(st.session_state.report_df, use_container_width=True)
 
-        csv_text = add_metadata_to_csv(st.session_state.report_df, st.session_state.selected_filters)
+        # CSV with metadata block
+        meta = [
+            "# Illinois Population Data Explorer - Export",
+            f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "# Data Source: U.S. Census Bureau Population Estimates",
+            f"# Years: {', '.join(st.session_state.selected_filters.get('years', []))}",
+            f"# Counties: {', '.join(st.session_state.selected_filters.get('counties', []))}",
+            f"# Race Filter: {st.session_state.selected_filters.get('race', 'All')}",
+            f"# Ethnicity: {st.session_state.selected_filters.get('ethnicity', 'All')}",
+            f"# Sex: {st.session_state.selected_filters.get('sex', 'All')}",
+            f"# Region: {st.session_state.selected_filters.get('region', 'None')}",
+            f"# Age Group: {st.session_state.selected_filters.get('age_group', 'All')}",
+            f"# Group By: {', '.join(st.session_state.selected_filters.get('group_by', [])) or 'None'}",
+            f"# Total Records: {len(st.session_state.report_df)}",
+            f"# Total Population: {st.session_state.report_df['Count'].sum():,}" if 'Count' in st.session_state.report_df.columns else "# Total Population: N/A",
+            "#",
+            "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.",
+            "#"
+        ]
+        csv_text = "\\n".join(meta) + "\\n" + st.session_state.report_df.to_csv(index=False)
         st.download_button("📥 Download CSV", data=csv_text, file_name="illinois_population_data.csv", mime="text/csv")
 
     st.markdown("---")
