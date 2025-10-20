@@ -218,7 +218,8 @@ def main():
     with c3:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
     with c4:
-        st.markdown(f("""<div class="metric-card"><div class="metric-value">{}</div><div class="metric-label">Age Groups</div></div>""".format(len(agegroups_list_raw))), unsafe_allow_html=True)
+        # FIX: proper f-string (no stray `f(` call)
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
     # Action buttons (with fallback for older Streamlit without `type=`)
     st.markdown("---")
