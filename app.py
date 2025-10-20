@@ -1,6 +1,7 @@
 # ============================================================================
 # HEADER SECTION - Includes and Configuration
 # ============================================================================
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -17,87 +18,93 @@ FORM_CONTROL_PATH = "./form_control_UI_data.csv"
 # ============================================================================
 # CONSTANTS - Mappings and Configuration
 # ============================================================================
+
 RACE_DISPLAY_TO_CODE = {
     "Two or More Races": "TOM",
-    "American Indian and Alaska Native": "AIAN",
+    "American Indian and Alaska Native": "AIAN", 
     "Black or African American": "Black",
     "White": "White",
     "Native Hawaiian and Other Pacific Islander": "NHOPI",
     "Asian": "Asian",
 }
+
 RACE_CODE_TO_DISPLAY = {v: k for k, v in RACE_DISPLAY_TO_CODE.items()}
 
 CODE_TO_BRACKET = {
-    1: "0-4", 2: "5-9", 3: "10-14", 4: "15-19", 5: "20-24", 6: "25-29",
-    7: "30-34", 8: "35-39", 9: "40-44", 10: "45-49", 11: "50-54",
-    12: "55-59", 13: "60-64", 14: "65-69", 15: "70-74", 16: "75-79",
+    1: "0-4", 2: "5-9", 3: "10-14", 4: "15-19", 5: "20-24", 6: "25-29", 
+    7: "30-34", 8: "35-39", 9: "40-44", 10: "45-49", 11: "50-54", 
+    12: "55-59", 13: "60-64", 14: "65-69", 15: "70-74", 16: "75-79", 
     17: "80-84", 18: "80+",
 }
 
 # ============================================================================
 # STYLE CONFIGURATION - CSS Stylesheet
 # ============================================================================
+
 APP_STYLES = """
 <style>
     /* Main container styling */
-    .main-container {
+    .main-container { 
         font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
         background: linear-gradient(135deg, #f8f9fa, #e9ecef);
     }
     
-    .main-header {
-        font-size: 2.5rem;
-        background: linear-gradient(135deg, #0d47a1, #1976d2);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
+    /* Header styling - C++ style comments */
+    .header-comment {
+        color: #6c757d;
+        font-size: 0.9rem;
+        font-family: 'Courier New', monospace;
         margin-bottom: 0.5rem;
-        font-weight: 800;
+    }
+    
+    .main-header { 
+        font-size: 2.5rem; 
+        background: linear-gradient(135deg, #0d47a1, #1976d2);
+        -webkit-background-clip: text; 
+        -webkit-text-fill-color: transparent; 
+        text-align: center;
+        margin-bottom: 0.5rem; 
+        font-weight: 800; 
         font-family: 'Courier New', monospace;
         border-bottom: 2px solid #0d47a1;
         padding-bottom: 0.5rem;
     }
     
-    .sub-title {
-        font-size: 1.1rem;
-        color: #495057;
-        text-align: center;
+    .sub-title { 
+        font-size: 1.1rem; 
+        color: #495057; 
+        text-align: center; 
         margin-bottom: 2rem;
-        font-weight: 400;
+        font-weight: 400; 
         font-style: italic;
         font-family: 'Courier New', monospace;
     }
     
     /* Metric cards - struct-like appearance */
-    /* Style adjusted slightly for sidebar */
-    .st-emotion-cache-1jicfl2 .metric-card { 
-        margin-bottom: 1rem;
-    }
-    
-    .metric-card {
+    .metric-card { 
         background: linear-gradient(135deg, #ffffff, #f8f9fa);
-        padding: 1.2rem;
+        padding: 1.2rem; 
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-align: center;
+        margin-bottom: 1rem; 
+        text-align: center; 
         border: 1px solid #dee2e6;
         border-left: 4px solid #0d47a1;
         font-family: 'Courier New', monospace;
-        margin-bottom: 1rem; /* Added for sidebar stacking */
     }
     
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #1a365d;
-        margin-bottom: 0.3rem;
-        line-height: 1;
+    .metric-value { 
+        font-size: 1.8rem; 
+        font-weight: 700; 
+        color: #1a365d; 
+        margin-bottom: 0.3rem; 
+        line-height: 1; 
     }
     
-    .metric-label {
-        font-size: 0.8rem;
-        color: #6c757d;
-        font-weight: 500;
+    .metric-label { 
+        font-size: 0.8rem; 
+        color: #6c757d; 
+        font-weight: 500; 
         line-height: 1.2;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -132,9 +139,6 @@ APP_STYLES = """
 # UTILITY FUNCTIONS
 # ============================================================================
 
-# ... (All utility functions like combine_codes_to_label, ensure_county_names, 
-#      attach_agegroup_column, and aggregate_multi remain unchanged) ...
-
 def combine_codes_to_label(codes: List[int]) -> str:
     """
     FUNCTION: combine_codes_to_label
@@ -166,7 +170,7 @@ def combine_codes_to_label(codes: List[int]) -> str:
 
 def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str, int]) -> pd.DataFrame:
     """
-    FUNCTION: ensure_county_names
+    FUNCTION: ensure_county_names  
     PURPOSE: Ensure county names are properly mapped in dataframe
     PARAMETERS: DataFrame, counties mapping dictionary
     RETURNS: DataFrame with county names
@@ -184,9 +188,9 @@ def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str, int]) -> pd.Da
     return df
 
 def attach_agegroup_column(df: pd.DataFrame, include_age: bool,
-                            agegroup_for_backend: Optional[str],
-                            custom_ranges: List[Tuple[int, int]],
-                            agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
+                          agegroup_for_backend: Optional[str],
+                          custom_ranges: List[Tuple[int, int]], 
+                          agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
     """
     FUNCTION: attach_agegroup_column
     PURPOSE: Add age group column to dataframe based on configuration
@@ -253,11 +257,11 @@ def attach_agegroup_column(df: pd.DataFrame, include_age: bool,
     return df_copy
 
 def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str],
-                    year_str: str, county_label: str,
-                    counties_map: Dict[str, int],
-                    agegroup_for_backend: Optional[str],
-                    custom_ranges: List[Tuple[int, int]],
-                    agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
+                   year_str: str, county_label: str, 
+                   counties_map: Dict[str, int],
+                   agegroup_for_backend: Optional[str],
+                   custom_ranges: List[Tuple[int, int]], 
+                   agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
     """
     FUNCTION: aggregate_multi
     PURPOSE: Aggregate data with multiple grouping variables
@@ -280,8 +284,8 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str],
     # Single aggregate case
     if len(grouping_vars_clean) == 0:
         out = pd.DataFrame({
-            "Count": [int(total_population)],
-            "Percent": [100.0],
+            "Count": [int(total_population)], 
+            "Percent": [100.0], 
             "Year": [str(year_str)]
         })
         out.insert(0, "County", county_label)
@@ -289,8 +293,8 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str],
     
     # Multi-group aggregation
     include_age = "Age" in grouping_vars_clean
-    df = attach_agegroup_column(df_source, include_age, agegroup_for_backend,
-                                custom_ranges, agegroup_map_implicit)
+    df = attach_agegroup_column(df_source, include_age, agegroup_for_backend, 
+                               custom_ranges, agegroup_map_implicit)
     
     group_fields = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
     grouped = df.groupby(group_fields, dropna=False)["Count"].sum().reset_index()
@@ -322,6 +326,7 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str],
 # ============================================================================
 # MAIN APPLICATION FUNCTION
 # ============================================================================
+
 def main():
     """
     FUNCTION: main
@@ -331,8 +336,8 @@ def main():
     
     # Initialize application
     st.set_page_config(
-        page_title=APP_TITLE,
-        layout=APP_LAYOUT,
+        page_title=APP_TITLE, 
+        layout=APP_LAYOUT, 
         page_icon=APP_ICON
     )
     
@@ -353,6 +358,9 @@ def main():
     # HEADER SECTION
     # ========================================================================
     
+    st.markdown('<div class="header-comment">// Illinois Population Data Explorer v2.0</div>', unsafe_allow_html=True)
+    st.markdown('<div class="header-comment">// U.S. Census Bureau Data Analysis Tool</div>', unsafe_allow_html=True)
+    
     st.markdown('<div class="main-header">🏛️ Illinois Population Data Explorer</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Analyze demographic trends across Illinois counties (2000–2024)</div>', unsafe_allow_html=True)
     
@@ -360,82 +368,84 @@ def main():
     # DATA INITIALIZATION
     # ========================================================================
     
+    st.markdown('<div class="header-comment">// Initializing data controllers...</div>', unsafe_allow_html=True)
+    
     # Load form control data
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
     
     # ========================================================================
-    # SIDEBAR - Metrics and Links (MOVED FROM MAIN PAGE)
+    # METRICS DASHBOARD
     # ========================================================================
     
-    with st.sidebar:
-        st.markdown("## 📊 System Metrics")
-        
+    st.markdown("## 📊 System Metrics")
+    st.markdown('<div class="header-comment">// Application data scope and capabilities</div>', unsafe_allow_html=True)
+    
+    metrics_row = st.columns(4)
+    
+    with metrics_row[0]:
         st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-value">{len(years_list)}</div>
                 <div class="metric-label">Years Available</div>
             </div>
         """, unsafe_allow_html=True)
-        
+    
+    with metrics_row[1]:
         st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-value">{len(counties_map)}</div>
                 <div class="metric-label">Illinois Counties</div>
             </div>
         """, unsafe_allow_html=True)
-        
+    
+    with metrics_row[2]:
         st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-value">{len(races_list_raw)}</div>
                 <div class="metric-label">Race Categories</div>
             </div>
         """, unsafe_allow_html=True)
-        
+    
+    with metrics_row[3]:
         st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-value">{len(agegroups_list_raw)}</div>
                 <div class="metric-label">Age Groups</div>
             </div>
         """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Moved from main page action_cols[1]
-        display_census_links()
-
+    
+    st.markdown("---")
+    
     # ========================================================================
-    # CONTROL PANEL SECTION (REORGANIZED)
+    # CONTROL PANEL SECTION
     # ========================================================================
     
     st.markdown("## 🎮 Control Panel")
+    st.markdown('<div class="header-comment">// Configure data parameters and execution</div>', unsafe_allow_html=True)
     
-    with st.expander("Configure Data Query", expanded=True):
+    # Render sidebar controls
+    choices = render_sidebar_controls(
+        years_list, races_list_raw, counties_map, 
+        agegroup_map_implicit, agegroups_list_raw
+    )
+    
+    # Action buttons
+    action_cols = st.columns([3, 2])
+    
+    with action_cols[0]:
+        st.markdown('<div class="header-comment">// Execute data processing</div>', unsafe_allow_html=True)
+        try:
+            go = st.button("🚀 Execute Data Processing", use_container_width=True, type="primary")
+        except TypeError:
+            go = st.button("🚀 Execute Data Processing", use_container_width=True)
         
-        # --- IMPORTANT ---
-        # The function 'render_sidebar_controls' (from frontend_sidebar.py)
-        # MUST BE MODIFIED to render its widgets in the main container 
-        # (e.g., using st.multiselect) instead of st.sidebar.multiselect.
-        choices = render_sidebar_controls(
-            years_list, races_list_raw, counties_map,
-            agegroup_map_implicit, agegroups_list_raw
-        )
-        
-        st.markdown("---") # Separator before buttons
-
-        # Action buttons (Moved inside expander)
-        action_cols = st.columns(2) # Simplified from [3, 2]
-        
-        with action_cols[0]:
-            try:
-                go = st.button("🚀 Execute Data Processing", use_container_width=True, type="primary")
-            except TypeError:
-                go = st.button("🚀 Execute Data Processing", use_container_width=True)
-        
-        with action_cols[1]:
-            clear_clicked = st.button("🗑️ Clear Results", use_container_width=True)
-
-    st.markdown("---") # Separator after control panel
+        st.markdown('<div class="header-comment">// Clear current results</div>', unsafe_allow_html=True)
+        clear_clicked = st.button("🗑️ Clear Results", use_container_width=True)
+    
+    with action_cols[1]:
+        st.markdown('<div class="header-comment">// External references</div>', unsafe_allow_html=True)
+        display_census_links()
     
     # Initialize session state
     if "report_df" not in st.session_state:
@@ -545,12 +555,14 @@ def main():
         st.success("✅ Data processing completed successfully!")
         
         st.markdown("## 📋 Processing Results")
+        st.markdown('<div class="header-comment">// Generated data output</div>', unsafe_allow_html=True)
         
         # Display results dataframe
         st.dataframe(st.session_state["report_df"], use_container_width=True)
         
         # Export functionality
         st.markdown("## 💾 Data Export")
+        st.markdown('<div class="header-comment">// Export processed data with metadata</div>', unsafe_allow_html=True)
         
         meta = [
             "# Illinois Population Data Explorer - Export",
@@ -585,8 +597,16 @@ def main():
     # ========================================================================
     
     st.markdown("---")
+    st.markdown(
+        "<div style='text-align:center;color:#666;font-family:Consolas;'>"
+        "// Illinois Population Data Explorer • U.S. Census Bureau Data • 2000–2024"
+        "</div>", 
+        unsafe_allow_html=True
+    )
+
 # ============================================================================
 # APPLICATION ENTRY POINT
 # ============================================================================
+
 if __name__ == "__main__":
     main()
