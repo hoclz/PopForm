@@ -409,16 +409,50 @@ def main():
         except TypeError:
             go = st.button("🚀 Execute Data Processing", use_container_width=True)
        
-        clear_clicked = st.button("🗑️ Clear Results", use_container_width=True)
+        # Initialize session state
+        if "report_df" not in st.session_state:
+            st.session_state["report_df"] = pd.DataFrame()
+        if "selected_filters" not in st.session_state:
+            st.session_state["selected_filters"] = {}
+       
+        if not st.session_state["report_df"].empty:
+            bottom_cols = st.columns(2)
+            with bottom_cols[0]:
+                clear_clicked = st.button("🗑️ Clear Results", use_container_width=True)
+            with bottom_cols[1]:
+                meta = [
+                    "# Illinois Population Data Explorer - Export",
+                    f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    "# Data Source: U.S. Census Bureau Population Estimates",
+                    f"# Years: {', '.join(st.session_state['selected_filters'].get('years', []))}",
+                    f"# Counties: {', '.join(st.session_state['selected_filters'].get('counties', []))}",
+                    f"# Race Filter: {st.session_state['selected_filters'].get('race', 'All')}",
+                    f"# Ethnicity: {st.session_state['selected_filters'].get('ethnicity', 'All')}",
+                    f"# Sex: {st.session_state['selected_filters'].get('sex', 'All')}",
+                    f"# Region: {st.session_state['selected_filters'].get('region', 'None')}",
+                    f"# Age Group: {st.session_state['selected_filters'].get('age_group', 'All')}",
+                    f"# Group By: {', '.join(st.session_state['selected_filters'].get('group_by', [])) or 'None'}",
+                    f"# Total Records: {len(st.session_state['report_df'])}",
+                    f"# Total Population: {st.session_state['report_df']['Count'].sum():,}" if 'Count' in st.session_state['report_df'].columns else "# Total Population: N/A",
+                    "#",
+                    "# Note: Data are official U.S. Census Bureau estimates",
+                    "#"
+                ]
+               
+                csv_text = "\n".join(meta) + "\n" + st.session_state["report_df"].to_csv(index=False)
+               
+                st.download_button(
+                    "📥 Download CSV Report",
+                    data=csv_text,
+                    file_name="illinois_population_data.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        else:
+            clear_clicked = st.button("🗑️ Clear Results", use_container_width=True)
    
     with action_cols[1]:
         display_census_links()
-   
-    # Initialize session state
-    if "report_df" not in st.session_state:
-        st.session_state["report_df"] = pd.DataFrame()
-    if "selected_filters" not in st.session_state:
-        st.session_state["selected_filters"] = {}
    
     # Handle clear action
     if clear_clicked:
@@ -525,37 +559,6 @@ def main():
        
         # Display results dataframe
         st.dataframe(st.session_state["report_df"], use_container_width=True)
-       
-        # Export functionality
-        st.markdown("## 💾 Data Export")
-       
-        meta = [
-            "# Illinois Population Data Explorer - Export",
-            f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "# Data Source: U.S. Census Bureau Population Estimates",
-            f"# Years: {', '.join(st.session_state['selected_filters'].get('years', []))}",
-            f"# Counties: {', '.join(st.session_state['selected_filters'].get('counties', []))}",
-            f"# Race Filter: {st.session_state['selected_filters'].get('race', 'All')}",
-            f"# Ethnicity: {st.session_state['selected_filters'].get('ethnicity', 'All')}",
-            f"# Sex: {st.session_state['selected_filters'].get('sex', 'All')}",
-            f"# Region: {st.session_state['selected_filters'].get('region', 'None')}",
-            f"# Age Group: {st.session_state['selected_filters'].get('age_group', 'All')}",
-            f"# Group By: {', '.join(st.session_state['selected_filters'].get('group_by', [])) or 'None'}",
-            f"# Total Records: {len(st.session_state['report_df'])}",
-            f"# Total Population: {st.session_state['report_df']['Count'].sum():,}" if 'Count' in st.session_state['report_df'].columns else "# Total Population: N/A",
-            "#",
-            "# Note: Data are official U.S. Census Bureau estimates",
-            "#"
-        ]
-       
-        csv_text = "\n".join(meta) + "\n" + st.session_state["report_df"].to_csv(index=False)
-       
-        st.download_button(
-            "📥 Download CSV Report",
-            data=csv_text,
-            file_name="illinois_population_data.csv",
-            mime="text/csv"
-        )
    
     # ========================================================================
     # FOOTER SECTION
