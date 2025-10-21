@@ -92,6 +92,20 @@ except Exception as e:
 DATA_FOLDER = "./data"
 FORM_CONTROL_PATH = "./form_control_UI_data.csv"
 
+# ---- Region definitions (unique assignment with precedence: Cook > Collar > Urban > Rural)
+COOK_SET   = {31}
+COLLAR_SET = {43, 89, 97, 125, 197}
+URBAN_SET  = {
+    201, 125, 97, 39, 89, 43, 31, 93, 197, 91, 143, 179, 127, 19, 183, 165, 109, 113, 173
+}
+RURAL_SET  = {
+    1,3,5,7,9,11,13,15,17,21,23,25,27,29,33,35,37,41,45,47,49,51,53,55,57,59,61,63,65,67,
+    69,71,73,75,77,79,81,83,85,87,95,99,101,103,105,107,111,115,117,119,121,123,129,131,
+    133,135,137,139,141,145,147,149,151,153,155,157,159,161,163,167,169,171,175,177,181,
+    185,187,189,191,193,195,199,203
+}
+REGION_LABELS = ("Cook County", "Collar Counties", "Urban Counties", "Rural Counties")
+
 RACE_DISPLAY_TO_CODE = {
     "Two or More Races": "TOM",
     "American Indian and Alaska Native": "AIAN",
@@ -140,6 +154,48 @@ def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.Dat
         df['County'] = df['County'].apply(_map)
     return df
 
+def _county_code_from_row(row, counties_map: Dict[str, int]) -> Optional[int]:
+    if 'County Code' in row and pd.notna(row['County Code']):
+        try:
+            return int(row['County Code'])
+        except Exception:
+            pass
+    if 'County' in row and pd.notna(row['County']):
+        try:
+            return int(row['County'])
+        except Exception:
+            pass
+    if 'County Name' in row and pd.notna(row['County Name']):
+        return int(counties_map.get(str(row['County Name']), np.nan)) if str(row['County Name']) in counties_map else None
+    return None
+
+def _code_to_region(code: Optional[int]) -> Optional[str]:
+    if code is None: return None
+    try:
+        c = int(code)
+    except Exception:
+        return None
+    # precedence
+    if c in COOK_SET:   return "Cook County"
+    if c in COLLAR_SET: return "Collar Counties"
+    if c in URBAN_SET:  return "Urban Counties"
+    if c in RURAL_SET:  return "Rural Counties"
+    return "Unknown Region"
+
+def attach_region_column(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.DataFrame:
+    """Create/overwrite a 'Region' column for grouping by Region."""
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    if 'Region' in df.columns:
+        # Normalize any existing labels to our standard set
+        df['Region'] = df['Region'].apply(lambda x: _code_to_region(_county_code_from_row({'County Code': None, 'County': None, 'County Name': x}, counties_map))
+                                          if x not in REGION_LABELS else x)
+        return df
+    # Derive per row
+    df['Region'] = df.apply(lambda r: _code_to_region(_county_code_from_row(r, counties_map)), axis=1)
+    return df
+
 def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_backend: Optional[str],
                            custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
     if not include_age:
@@ -183,62 +239,102 @@ def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_bac
 def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str: str,
                     county_label: str, counties_map: Dict[str,int], agegroup_for_backend: Optional[str],
                     custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
+    # Clean requested groupings (now may include 'Region')
     grouping_vars_clean = [g for g in grouping_vars if g != "All"]
+
     def _empty():
         base = (["County"] if "County" not in grouping_vars_clean else [])
         cols = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
         return pd.DataFrame(columns=base + cols + ["Count", "Percent", "Year"])
+
     if df_source is None or df_source.empty:
         return _empty()
+
     total_population = df_source["Count"].sum()
     if total_population == 0:
         return _empty()
+
     if len(grouping_vars_clean) == 0:
         out = pd.DataFrame({"Count":[int(total_population)], "Percent":[100.0], "Year":[str(year_str)]})
         out.insert(0, "County", county_label)
         out = ensure_county_names(out, counties_map)
         return out
+
+    # ---- Prepare columns needed for grouping
     include_age = "Age" in grouping_vars_clean
     df = attach_agegroup_column(df_source, include_age, agegroup_for_backend, custom_ranges, agegroup_map_implicit)
-    group_fields = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
+
+    # Always compute Region so it’s available if requested
+    df = attach_region_column(df, counties_map)
+
+    # Build group fields (map UI names to data columns)
+    group_fields = []
+    for gv in grouping_vars_clean:
+        if gv == "Age":
+            group_fields.append("AgeGroup")
+        elif gv == "County":
+            # source likely uses numeric 'County' column; we’ll aggregate by numeric code
+            group_fields.append("County")
+        elif gv == "Region":
+            group_fields.append("Region")
+        else:
+            group_fields.append(gv)
+
     grouped = df.groupby(group_fields, dropna=False)["Count"].sum().reset_index()
+
+    # Normalize race labels to codes for compactness if present
     if "Race" in grouped.columns:
         grouped["Race"] = grouped["Race"].map({v:k for k,v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
+
     grouped["Year"] = str(year_str)
-    if "County" in grouping_vars_clean:
-        if "County" in grouped.columns:
-            grouped.rename(columns={"County":"County Code"}, inplace=True)
+
+    # ---- County name/code harmonization for presentation
+    if "County" in grouped.columns:
+        # Rename numeric 'County' to 'County Code' and attach county name
+        grouped.rename(columns={"County":"County Code"}, inplace=True)
         grouped = ensure_county_names(grouped, counties_map)
-        denom_keys = ["Year","County Code"]
-        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns:
-            denom_keys.append("AgeGroup")
-    else:
-        denom_keys = ["Year"]
-        if "Age" in grouping_vars_clean and "AgeGroup" in grouped.columns:
-            denom_keys.append("AgeGroup")
+
+    # ---- Denominator keys for Percent calculation (Year plus the "parent" dimensions)
+    denom_keys = ["Year"]
+    if "County Code" in grouped.columns and "County" in grouping_vars_clean:
+        denom_keys.append("County Code")
+    if "Region" in grouped.columns and "Region" in grouping_vars_clean:
+        denom_keys.append("Region")
+    if "AgeGroup" in grouped.columns and "Age" in grouping_vars_clean:
+        denom_keys.append("AgeGroup")
+
     if denom_keys:
         den = grouped.groupby(denom_keys, dropna=False)["Count"].transform("sum")
         grouped["Percent"] = np.where(den > 0, (grouped["Count"]/den*100).round(1), 0.0)
     else:
         grouped["Percent"] = (grouped["Count"]/total_population*100.0).round(1)
+
+    # ---- If County not in grouping, keep a label column for context
     if "County" not in grouping_vars_clean:
         grouped.insert(0, "County", county_label)
         grouped = ensure_county_names(grouped, counties_map)
-    else:
-        group_fields = ["County Code" if g == "County" else g for g in group_fields]
-    existing = list(grouped.columns); col_order = []
+
+    # ---- Column order (County/Code/Name first, then group fields, then metrics)
+    existing = list(grouped.columns)
+    col_order = []
     if "County" in existing: col_order.append("County")
     if "County Code" in existing:
         col_order += ["County Code"]
         if "County Name" in existing: col_order += ["County Name"]
-    for c in group_fields:
-        if c in existing and c not in col_order: col_order.append(c)
-    for c in ["Count","Percent","Year"]:
+    for c in ["Region", "AgeGroup", "Race", "Ethnicity", "Sex"]:
+        if c in existing and c not in col_order and c in group_fields:
+            col_order.append(c)
+    for c in ["Count", "Percent", "Year"]:
         if c in existing: col_order.append(c)
+    # Ensure any missing group fields are still included
+    for c in group_fields:
+        if c in existing and c not in col_order:
+            col_order.append(c)
+
     return grouped[col_order]
 
 # ──────────────────────────────────────────────────────────────
-# NEW: dynamic ConcatenatedKey based on UI/group-by (uses "_" delimiter)
+# Dynamic ConcatenatedKey (uses "_" delimiter)
 # ──────────────────────────────────────────────────────────────
 def _normalize_token(x: object) -> str:
     s = str(x).strip()
@@ -253,10 +349,11 @@ def add_concatenated_key_dynamic(
     delimiter: str = "_"
 ) -> pd.DataFrame:
     """
-    Builds a 'ConcatenatedKey' using whatever columns are present based on the user's selections.
+    Builds 'ConcatenatedKey' from available columns based on the user's selections.
     Order:
-      County Code, County Name (or County) → group_by-derived columns (AgeGroup, Race, Ethnicity, Sex, …) → Year
-    If a dimension was filtered to a single value and NOT present as a column, the selected value is prefixed.
+      County Code + County Name (or County) → group_by columns (AgeGroup/Race/Ethnicity/Sex/Region/…) → Year
+    If a dimension was filtered to a single value and NOT grouped (column absent), we prefix that token
+    (supports race, ethnicity, sex, region).
     """
     if df is None or df.empty:
         return df
@@ -265,30 +362,36 @@ def add_concatenated_key_dynamic(
     cols_present = set(df.columns)
     key_cols: List[str] = []
 
-    # County first (prefer code+name when available)
+    # County first
     if {"County Code", "County Name"}.issubset(cols_present):
         key_cols += ["County Code", "County Name"]
     elif "County" in cols_present:
         key_cols += ["County"]
 
-    # Map UI group names → data columns
-    map_ui_to_col = {"Age": "AgeGroup", "Race": "Race", "Ethnicity": "Ethnicity", "Sex": "Sex", "County": "County Code"}
+    # Map UI → columns (now includes Region)
+    map_ui_to_col = {
+        "Age": "AgeGroup",
+        "Race": "Race",
+        "Ethnicity": "Ethnicity",
+        "Sex": "Sex",
+        "County": "County Code",
+        "Region": "Region",
+    }
     for g in group_by:
         col = map_ui_to_col.get(g, g)
         if col in cols_present and col not in key_cols and col not in {"County Code","County Name","County"}:
             key_cols.append(col)
 
-    # Year last if present
+    # Year at end if present
     if "Year" in cols_present:
         key_cols.append("Year")
 
     out = df.copy()
 
-    # Cast columns to str safely
+    # Safe casting to str
     for c in key_cols:
         if c in out.columns:
             if pd.api.types.is_numeric_dtype(out[c]):
-                # keep integers as integers strings (avoid 1.0)
                 try:
                     out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64").astype(str)
                 except Exception:
@@ -296,19 +399,22 @@ def add_concatenated_key_dynamic(
             else:
                 out[c] = out[c].astype(str)
 
-    # Base key from available columns
+    # Base key
     if key_cols:
         out["ConcatenatedKey"] = out[key_cols].apply(lambda r: delimiter.join(_normalize_token(v) for v in r), axis=1)
     else:
         out["ConcatenatedKey"] = ""
 
-    # If a dimension was filtered but not grouped (column missing), prefix that constant token
+    # Prefix filtered-but-not-grouped constant dims (now includes region)
     prefix_tokens: List[str] = []
-    for sel_key, col_name in [("race", "Race"), ("ethnicity", "Ethnicity"), ("sex", "Sex")]:
-        if col_name not in cols_present:  # not grouped/shown
+    for sel_key, col_name, label_prefix in [
+        ("race", "Race", ""), ("ethnicity", "Ethnicity", ""), ("sex", "Sex", ""), ("region", "Region", "Region_")
+    ]:
+        if col_name not in cols_present:
             val = selected_filters.get(sel_key)
             if val and str(val).strip().lower() not in {"all", "none"}:
-                prefix_tokens.append(_normalize_token(val))
+                token = (label_prefix + _normalize_token(val)) if label_prefix else _normalize_token(val)
+                prefix_tokens.append(token)
 
     if prefix_tokens:
         prefix = delimiter.join(prefix_tokens)
@@ -317,22 +423,18 @@ def add_concatenated_key_dynamic(
     return out
 
 def main():
-    # ===== Arched header (matches screenshot) =====
+    # ===== Arched header =====
     st.markdown("""
 <div class="hero-arch">
-  <!-- top arc -->
   <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M10,190 Q600,-150 1190,190"
-          stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M10,190 Q600,-150 1190,190" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
   </svg>
 
   <div class="main-header">Illinois Population Data</div>
   <div class="sub-title">Analyze demographic trends across Illinois counties from 2000–2024</div>
 
-  <!-- bottom arc -->
   <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M10,10 Q600,350 1190,10"
-          stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M10,10 Q600,350 1190,10" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
   </svg>
 </div>
 """, unsafe_allow_html=True)
@@ -343,46 +445,27 @@ def main():
         FORM_CONTROL_PATH
     )
 
-    # Sidebar (all sections closed; includes "Group Results By")
+    # Sidebar (expects "Region" to be offered among Group Results By)
     choices = render_sidebar_controls(
         years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw
     )
 
-    # KPI row with 15px bricks between cards
+    # KPI row
     st.markdown("## 📊 Data Overview")
     c1, b1, c2, b2, c3, b3, c4 = st.columns([1, 0.07, 1, 0.07, 1, 0.07, 1])
-
     with c1:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""",
-            unsafe_allow_html=True,
-        )
-    with b1:
-        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
-
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
+    with b1: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""",
-            unsafe_allow_html=True,
-        )
-    with b2:
-        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
-
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
+    with b2: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c3:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""",
-            unsafe_allow_html=True,
-        )
-    with b3:
-        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
-
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
+    with b3: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c4:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
-    # Buttons + Census links row (Census links on the RIGHT, default closed)
+    # Buttons + Census links
     st.markdown("---")
     left_col, right_col = st.columns([3, 2])
     with left_col:
@@ -402,7 +485,7 @@ def main():
     st.session_state.setdefault("report_df", pd.DataFrame())
     st.session_state.setdefault("selected_filters", {})
 
-    # Generate flow
+    # Generate
     if go:
         if not choices["selected_years"]:
             st.warning("⚠️ Please select at least one year."); st.stop()
@@ -415,10 +498,17 @@ def main():
             "race": choices["selected_race_display"],
             "ethnicity": choices["selected_ethnicity"],
             "sex": choices["selected_sex"],
-            "region": choices["selected_region"],
+            "region": choices["selected_region"],  # used both as filter and for key prefix when not grouped
             "age_group": "Custom Ranges" if choices["enable_custom_ranges"] else choices["selected_agegroup_display"],
-            "group_by": choices["grouping_vars"],
+            "group_by": choices["grouping_vars"],  # may include "Region" now
         }
+
+        # Choose a human label for the "County" context column when County is not grouped
+        def _county_label_for_all():
+            # If user chose "All" counties and a specific region, reflect that in the label
+            if "All" in choices["selected_counties"]:
+                return choices["selected_region"] or "All Counties"
+            return "Selected Counties"
 
         with st.spinner("🔄 Processing data…"):
             def build_block(county_list: List[str], county_label: str) -> pd.DataFrame:
@@ -453,7 +543,7 @@ def main():
 
             all_frames: List[pd.DataFrame] = []
             if "All" in choices["selected_counties"]:
-                combined = build_block(["All"], "All Counties")
+                combined = build_block(["All"], _county_label_for_all())
             else:
                 combined = build_block(choices["selected_counties"], "Selected Counties")
             if not combined.empty:
@@ -468,12 +558,12 @@ def main():
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
 
-            # >>> NEW: add dynamic ConcatenatedKey (underscore-delimited) <<<
+            # Add dynamic ConcatenatedKey (underscore-delimited)
             if not st.session_state.report_df.empty:
                 st.session_state.report_df = add_concatenated_key_dynamic(
                     st.session_state.report_df, st.session_state.selected_filters, delimiter="_"
                 )
-                # Move the key to the first column for visibility
+                # Move key to first column
                 cols = st.session_state.report_df.columns.tolist()
                 if "ConcatenatedKey" in cols:
                     cols = ["ConcatenatedKey"] + [c for c in cols if c != "ConcatenatedKey"]
@@ -491,10 +581,10 @@ def main():
             "# Data Source: U.S. Census Bureau Population Estimates",
             f"# Years: {', '.join(st.session_state.selected_filters.get('years', []))}",
             f"# Counties: {', '.join(st.session_state.selected_filters.get('counties', []))}",
+            f"# Region Filter: {st.session_state.selected_filters.get('region', 'None')}",
             f"# Race Filter: {st.session_state.selected_filters.get('race', 'All')}",
             f"# Ethnicity: {st.session_state.selected_filters.get('ethnicity', 'All')}",
             f"# Sex: {st.session_state.selected_filters.get('sex', 'All')}",
-            f"# Region: {st.session_state.selected_filters.get('region', 'None')}",
             f"# Age Group: {st.session_state.selected_filters.get('age_group', 'All')}",
             f"# Group By: {', '.join(st.session_state.selected_filters.get('group_by', [])) or 'None'}",
             f"# Total Records: {len(st.session_state.report_df)}",
