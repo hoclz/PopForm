@@ -58,7 +58,7 @@ st.markdown("""
         display: inline-block;
         white-space: nowrap;
         will-change: transform;
-        animation: ticker-move 48s linear infinite;
+        animation: ticker-move 60s linear infinite;
         padding: 6px 0;
     }
     .release-ticker:hover { animation-play-state: paused; }
@@ -73,8 +73,8 @@ st.markdown("""
     .release-dot{ opacity:.6; padding: 0 .6rem; color:#e3f2fd; }
 
     @keyframes ticker-move {
-        0%   { transform: translateX(100%); }
-        100% { transform: translateX(-100%); }
+        0%   { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
     }
 
     .main-header {
@@ -143,6 +143,19 @@ st.markdown("""
     }
     .kpi-brick::before { top: 32px; }
     .kpi-brick::after  { bottom: 32px; }
+    
+    /* Toggle switch styling */
+    .ticker-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .toggle-label {
+        font-size: 0.9rem;
+        color: #4a5568;
+        font-weight: 500;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -464,12 +477,12 @@ def add_concatenated_key_dynamic(
 
     return out
 
-# ===== NEW: tiny helper to render the moving ticker =====
+# ===== UPDATED: tiny helper to render the moving ticker =====
 def render_release_ticker(releases: List[Tuple[int, str]]):
     # show newest first in the strip
     rel_sorted = sorted(releases, key=lambda x: x[0], reverse=True)
-    # duplicate the sequence once for seamless loop
-    seq = rel_sorted + rel_sorted
+    # duplicate the sequence for seamless loop
+    seq = rel_sorted * 2
     items_html = "".join(
         f"<span class='release-item'>Vintage {y}: {when}</span><span class='release-dot'>•</span>"
         for (y, when) in seq
@@ -481,8 +494,17 @@ def render_release_ticker(releases: List[Tuple[int, str]]):
     """, unsafe_allow_html=True)
 
 def main():
-    # ===== NEW: release ticker goes above the arch =====
-    render_release_ticker(CPC_RELEASES)
+    # ===== UPDATED: Ticker toggle control =====
+    st.markdown("""
+    <div class="ticker-toggle">
+        <span class="toggle-label">Show Release Dates Ticker:</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    show_ticker = st.toggle("", value=True, key="ticker_toggle", label_visibility="collapsed")
+    
+    if show_ticker:
+        render_release_ticker(CPC_RELEASES)
 
     # ===== Arched header =====
     st.markdown("""
@@ -506,7 +528,7 @@ def main():
         FORM_CONTROL_PATH
     )
 
-    # Sidebar (expects “Region” to be offered among Group Results By)
+    # Sidebar (expects "Region" to be offered among Group Results By)
     choices = render_sidebar_controls(
         years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw
     )
