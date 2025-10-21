@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
@@ -236,6 +237,85 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         if c in existing: col_order.append(c)
     return grouped[col_order]
 
+# ──────────────────────────────────────────────────────────────
+# NEW: dynamic ConcatenatedKey based on UI/group-by (uses "_" delimiter)
+# ──────────────────────────────────────────────────────────────
+def _normalize_token(x: object) -> str:
+    s = str(x).strip()
+    s = s.replace("–", "-").replace("—", "-")
+    s = re.sub(r"\s+", "_", s)                 # spaces -> underscore
+    s = re.sub(r"[^0-9A-Za-z_\-]+", "", s)     # keep letters/digits/_/-
+    return s
+
+def add_concatenated_key_dynamic(
+    df: pd.DataFrame,
+    selected_filters: Dict[str, object],
+    delimiter: str = "_"
+) -> pd.DataFrame:
+    """
+    Builds a 'ConcatenatedKey' using whatever columns are present based on the user's selections.
+    Order:
+      County Code, County Name (or County) → group_by-derived columns (AgeGroup, Race, Ethnicity, Sex, …) → Year
+    If a dimension was filtered to a single value and NOT present as a column, the selected value is prefixed.
+    """
+    if df is None or df.empty:
+        return df
+
+    group_by = selected_filters.get("group_by", []) or []
+    cols_present = set(df.columns)
+    key_cols: List[str] = []
+
+    # County first (prefer code+name when available)
+    if {"County Code", "County Name"}.issubset(cols_present):
+        key_cols += ["County Code", "County Name"]
+    elif "County" in cols_present:
+        key_cols += ["County"]
+
+    # Map UI group names → data columns
+    map_ui_to_col = {"Age": "AgeGroup", "Race": "Race", "Ethnicity": "Ethnicity", "Sex": "Sex", "County": "County Code"}
+    for g in group_by:
+        col = map_ui_to_col.get(g, g)
+        if col in cols_present and col not in key_cols and col not in {"County Code","County Name","County"}:
+            key_cols.append(col)
+
+    # Year last if present
+    if "Year" in cols_present:
+        key_cols.append("Year")
+
+    out = df.copy()
+
+    # Cast columns to str safely
+    for c in key_cols:
+        if c in out.columns:
+            if pd.api.types.is_numeric_dtype(out[c]):
+                # keep integers as integers strings (avoid 1.0)
+                try:
+                    out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64").astype(str)
+                except Exception:
+                    out[c] = out[c].astype(str)
+            else:
+                out[c] = out[c].astype(str)
+
+    # Base key from available columns
+    if key_cols:
+        out["ConcatenatedKey"] = out[key_cols].apply(lambda r: delimiter.join(_normalize_token(v) for v in r), axis=1)
+    else:
+        out["ConcatenatedKey"] = ""
+
+    # If a dimension was filtered but not grouped (column missing), prefix that constant token
+    prefix_tokens: List[str] = []
+    for sel_key, col_name in [("race", "Race"), ("ethnicity", "Ethnicity"), ("sex", "Sex")]:
+        if col_name not in cols_present:  # not grouped/shown
+            val = selected_filters.get(sel_key)
+            if val and str(val).strip().lower() not in {"all", "none"}:
+                prefix_tokens.append(_normalize_token(val))
+
+    if prefix_tokens:
+        prefix = delimiter.join(prefix_tokens)
+        out["ConcatenatedKey"] = prefix + (delimiter if out["ConcatenatedKey"].ne("").any() else "") + out["ConcatenatedKey"]
+
+    return out
+
 def main():
     # ===== Arched header (matches screenshot) =====
     st.markdown("""
@@ -387,6 +467,17 @@ def main():
 
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
+
+            # >>> NEW: add dynamic ConcatenatedKey (underscore-delimited) <<<
+            if not st.session_state.report_df.empty:
+                st.session_state.report_df = add_concatenated_key_dynamic(
+                    st.session_state.report_df, st.session_state.selected_filters, delimiter="_"
+                )
+                # Move the key to the first column for visibility
+                cols = st.session_state.report_df.columns.tolist()
+                if "ConcatenatedKey" in cols:
+                    cols = ["ConcatenatedKey"] + [c for c in cols if c != "ConcatenatedKey"]
+                    st.session_state.report_df = st.session_state.report_df[cols]
 
     # Results / download
     if not st.session_state.report_df.empty:
