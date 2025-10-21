@@ -1,4 +1,3 @@
-
 import streamlit as st
 
 # Sidebar builder (all sections closed by default)
@@ -40,7 +39,7 @@ def render_sidebar_controls(
             st.info("Using 'All' counties (specific selections ignored).")
             selected_counties = ["All"]
 
-    # Demographics
+    # Demographics & Region filters
     with sb.expander("👥 Demographics", expanded=False):
         race_opts = ["All"]
         for rcode in sorted(races_list_raw):
@@ -49,7 +48,9 @@ def render_sidebar_controls(
         selected_race_display = st.selectbox("Race Filter:", race_opts, index=0)
         selected_sex = st.radio("Sex:", ["All", "Male", "Female"], horizontal=True)
         selected_ethnicity = st.radio("Ethnicity:", ["All", "Hispanic", "Not Hispanic"], horizontal=True)
-        region_options = ["None", "Collar Counties", "Urban Counties", "Rural Counties"]
+
+        # UPDATED: include Cook County so labels match backend region mapping
+        region_options = ["None", "Cook County", "Collar Counties", "Urban Counties", "Rural Counties"]
         selected_region = st.selectbox("Region:", region_options, index=0)
 
     # Age Settings
@@ -84,7 +85,8 @@ def render_sidebar_controls(
     with sb.expander("📈 Group Results By", expanded=False):
         grouping_vars = st.multiselect(
             "Group by any combination (or choose 'All' for totals):",
-            ["All", "Age", "Race", "Ethnicity", "Sex", "County"],
+            # UPDATED: added "Region" as a groupable dimension
+            ["All", "Age", "Race", "Ethnicity", "Sex", "Region", "County"],
             default=["All"],
         )
         if "All" in grouping_vars and len(grouping_vars) > 1:
@@ -98,6 +100,7 @@ def render_sidebar_controls(
             value=True,
             help="Show a separate table for each selected county (in addition to combined results)."
         )
+        # Keep existing behavior: if grouping by County, per-county breakdown is redundant
         if "County" in grouping_vars and include_breakdown:
             st.info("Grouping by County already provides county rows. Turning off extra breakdowns.")
             include_breakdown = False
