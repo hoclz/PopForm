@@ -8,9 +8,75 @@ from typing import List, Tuple, Dict, Optional
 # Page setup
 st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
-# Styling (includes arched header + brick KPI dividers)
+# ─────────────────────────────────────────────────────────────
+# NEW: CPC release dates ticker configuration
+# Edit here if you want to change / refine any dates.
+# For 2000–2021 (except 2010), June is used per historical cadence.
+# ─────────────────────────────────────────────────────────────
+CPC_RELEASES: List[Tuple[int, str]] = [
+    (2024, "Jun 23, 2025"),
+    (2023, "Jun 27, 2024"),
+    (2022, "Jun 22, 2023"),
+    (2021, "Jun 2022"),
+    (2020, "Jun 2021"),
+    (2019, "Jun 2020"),
+    (2018, "Jun 2019"),
+    (2017, "Jun 2018"),
+    (2016, "Jun 2017"),
+    (2015, "Jun 2016"),
+    (2014, "Jun 2015"),
+    (2013, "Jun 2014"),
+    (2012, "Jun 2013"),
+    (2011, "Jun 2012"),
+    (2010, "Mar 2012"),  # Intercensal/vintage quirk
+    (2009, "Jun 2010"),
+    (2008, "Jun 2009"),
+    (2007, "Jun 2008"),
+    (2006, "Jun 2007"),
+    (2005, "Jun 2006"),
+    (2004, "Jun 2005"),
+    (2003, "Jun 2004"),
+    (2002, "Jun 2003"),
+    (2001, "Jun 2002"),
+    (2000, "Jun 2001"),
+]
+
+# Styling (includes arched header + brick KPI dividers + NEW ticker strip)
 st.markdown("""
 <style>
+    /* ===== Release ticker (new) ===== */
+    .release-ticker-wrap{
+        position: relative;
+        width: 100%;
+        overflow: hidden;
+        background: linear-gradient(90deg,#0d47a1,#1565c0);
+        border-bottom: 2px solid #90caf9;
+        box-shadow: 0 2px 6px rgba(13,71,161,.15);
+        margin: -6px 0 6px 0; /* sit just above the arch */
+    }
+    .release-ticker{
+        display: inline-block;
+        white-space: nowrap;
+        will-change: transform;
+        animation: ticker-move 48s linear infinite;
+        padding: 6px 0;
+    }
+    .release-ticker:hover { animation-play-state: paused; }
+    .release-item{
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.92rem;
+        letter-spacing: .1px;
+        padding: 0 .9rem;
+        opacity: 0.95;
+    }
+    .release-dot{ opacity:.6; padding: 0 .6rem; color:#e3f2fd; }
+
+    @keyframes ticker-move {
+        0%   { transform: translateX(100%); }
+        100% { transform: translateX(-100%); }
+    }
+
     .main-header {
         font-size: 3rem;
         background: linear-gradient(135deg,#0d47a1,#1976d2);
@@ -43,6 +109,7 @@ st.markdown("""
     }
     @media (max-width:700px){
         .arch-svg{ height:80px; }
+        .release-item{ font-size: .88rem; }
     }
 
     .metric-card {
@@ -188,20 +255,13 @@ def attach_region_column(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.Da
         return df
     df = df.copy()
     if 'Region' in df.columns:
-        df['Region'] = df['Region'].where(df['Region'].isin(REGION_LABELS), df['Region'])
+        df['Region'] = df['Region'].apply(
+            lambda x: _code_to_region(_county_code_from_row({'County Code': None, 'County': None, 'County Name': x}, counties_map))
+            if x not in REGION_LABELS else x
+        )
         return df
     df['Region'] = df.apply(lambda r: _code_to_region(_county_code_from_row(r, counties_map)), axis=1)
     return df
-
-# --- NEW: hard filter by Region selection (so output reflects exactly what was picked) ---
-def enforce_region_filter(df: pd.DataFrame, selected_region: Optional[str], counties_map: Dict[str,int]) -> pd.DataFrame:
-    """Restrict rows to the chosen Region, if any."""
-    if df is None or df.empty:
-        return df
-    if not selected_region or str(selected_region).strip().lower() in {"none", "all"}:
-        return df
-    df2 = attach_region_column(df, counties_map)
-    return df2[df2["Region"] == selected_region].copy()
 
 def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_backend: Optional[str],
                            custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
@@ -246,7 +306,6 @@ def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_bac
 def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str: str,
                     county_label: str, counties_map: Dict[str,int], agegroup_for_backend: Optional[str],
                     custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
-    # Clean requested groupings (now may include 'Region')
     grouping_vars_clean = [g for g in grouping_vars if g != "All"]
 
     def _empty():
@@ -267,14 +326,11 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         out = ensure_county_names(out, counties_map)
         return out
 
-    # ---- Prepare columns needed for grouping
     include_age = "Age" in grouping_vars_clean
     df = attach_agegroup_column(df_source, include_age, agegroup_for_backend, custom_ranges, agegroup_map_implicit)
 
-    # Always compute Region so it’s available if requested
     df = attach_region_column(df, counties_map)
 
-    # Build group fields
     group_fields = []
     for gv in grouping_vars_clean:
         if gv == "Age":
@@ -288,18 +344,15 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 
     grouped = df.groupby(group_fields, dropna=False)["Count"].sum().reset_index()
 
-    # Normalize race labels (optional compactness)
     if "Race" in grouped.columns:
         grouped["Race"] = grouped["Race"].map({v:k for k,v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
 
     grouped["Year"] = str(year_str)
 
-    # County name/code harmonization
     if "County" in grouped.columns:
         grouped.rename(columns={"County":"County Code"}, inplace=True)
         grouped = ensure_county_names(grouped, counties_map)
 
-    # Denominator keys for Percent
     denom_keys = ["Year"]
     if "County Code" in grouped.columns and "County" in grouping_vars_clean:
         denom_keys.append("County Code")
@@ -314,12 +367,10 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
     else:
         grouped["Percent"] = (grouped["Count"]/total_population*100.0).round(1)
 
-    # If County not in grouping, keep a context label
     if "County" not in grouping_vars_clean:
         grouped.insert(0, "County", county_label)
         grouped = ensure_county_names(grouped, counties_map)
 
-    # Column order
     existing = list(grouped.columns)
     col_order = []
     if "County" in existing: col_order.append("County")
@@ -344,7 +395,7 @@ def _normalize_token(x: object) -> str:
     s = str(x).strip()
     s = s.replace("–", "-").replace("—", "-")
     s = re.sub(r"\s+", "_", s)
-    s = re.sub(r"[^0-9A-Za-z_\-]+", "", s)
+    s = re.sub(r"[^0-9A-Za-z_\\-]+", "", s)
     return s
 
 def add_concatenated_key_dynamic(
@@ -359,13 +410,11 @@ def add_concatenated_key_dynamic(
     cols_present = set(df.columns)
     key_cols: List[str] = []
 
-    # County first
     if {"County Code", "County Name"}.issubset(cols_present):
         key_cols += ["County Code", "County Name"]
     elif "County" in cols_present:
         key_cols += ["County"]
 
-    # Map UI → columns
     map_ui_to_col = {
         "Age": "AgeGroup",
         "Race": "Race",
@@ -383,6 +432,7 @@ def add_concatenated_key_dynamic(
         key_cols.append("Year")
 
     out = df.copy()
+
     for c in key_cols:
         if c in out.columns:
             if pd.api.types.is_numeric_dtype(out[c]):
@@ -398,7 +448,6 @@ def add_concatenated_key_dynamic(
     else:
         out["ConcatenatedKey"] = ""
 
-    # Prefix filtered-but-not-grouped constant dims (includes Region)
     prefix_tokens: List[str] = []
     for sel_key, col_name, label_prefix in [
         ("race", "Race", ""), ("ethnicity", "Ethnicity", ""), ("sex", "Sex", ""), ("region", "Region", "Region_")
@@ -415,7 +464,26 @@ def add_concatenated_key_dynamic(
 
     return out
 
+# ===== NEW: tiny helper to render the moving ticker =====
+def render_release_ticker(releases: List[Tuple[int, str]]):
+    # show newest first in the strip
+    rel_sorted = sorted(releases, key=lambda x: x[0], reverse=True)
+    # duplicate the sequence once for seamless loop
+    seq = rel_sorted + rel_sorted
+    items_html = "".join(
+        f"<span class='release-item'>Vintage {y}: {when}</span><span class='release-dot'>•</span>"
+        for (y, when) in seq
+    )
+    st.markdown(f"""
+        <div class="release-ticker-wrap">
+            <div class="release-ticker">{items_html}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
 def main():
+    # ===== NEW: release ticker goes above the arch =====
+    render_release_ticker(CPC_RELEASES)
+
     # ===== Arched header =====
     st.markdown("""
 <div class="hero-arch">
@@ -447,28 +515,16 @@ def main():
     st.markdown("## 📊 Data Overview")
     c1, b1, c2, b2, c3, b3, c4 = st.columns([1, 0.07, 1, 0.07, 1, 0.07, 1])
     with c1:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
     with b1: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
     with b2: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c3:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
     with b3: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c4:
-        st.markdown(
-            f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
     # Buttons + Census links
     st.markdown("---")
@@ -503,9 +559,9 @@ def main():
             "race": choices["selected_race_display"],
             "ethnicity": choices["selected_ethnicity"],
             "sex": choices["selected_sex"],
-            "region": choices["selected_region"],  # used for filtering + key prefix
+            "region": choices["selected_region"],  # filter + key prefix when not grouped
             "age_group": "Custom Ranges" if choices["enable_custom_ranges"] else choices["selected_agegroup_display"],
-            "group_by": choices["grouping_vars"],  # may include "Region"
+            "group_by": choices["grouping_vars"],  # may include Region
         }
 
         def _county_label_for_all():
@@ -526,13 +582,10 @@ def main():
                         selected_race=choices["selected_race_code"],
                         selected_ethnicity=choices["selected_ethnicity"],
                         selected_sex=choices["selected_sex"],
-                        selected_region=choices["selected_region"],  # may or may not be honored by backend
+                        selected_region=choices["selected_region"],
                         selected_agegroup=choices["agegroup_for_backend"],
                         custom_age_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                     )
-                    # --- enforce Region filter here so the output reflects the exact selection ---
-                    df_src = enforce_region_filter(df_src, choices["selected_region"], counties_map)
-
                     block = aggregate_multi(
                         df_source=df_src,
                         grouping_vars=choices["grouping_vars"],
@@ -564,12 +617,10 @@ def main():
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
 
-            # Add dynamic ConcatenatedKey (underscore-delimited)
             if not st.session_state.report_df.empty:
                 st.session_state.report_df = add_concatenated_key_dynamic(
                     st.session_state.report_df, st.session_state.selected_filters, delimiter="_"
                 )
-                # Move key to first column
                 cols = st.session_state.report_df.columns.tolist()
                 if "ConcatenatedKey" in cols:
                     cols = ["ConcatenatedKey"] + [c for c in cols if c != "ConcatenatedKey"]
