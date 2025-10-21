@@ -9,9 +9,8 @@ from typing import List, Tuple, Dict, Optional
 st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
 # ─────────────────────────────────────────────────────────────
-# NEW: CPC release dates ticker configuration
-# Edit here if you want to change / refine any dates.
-# For 2000–2021 (except 2010), June is used per historical cadence.
+# CPC release dates ticker configuration (2000–2024)
+# (Month/day where known; otherwise month cadence)
 # ─────────────────────────────────────────────────────────────
 CPC_RELEASES: List[Tuple[int, str]] = [
     (2024, "Jun 23, 2025"),
@@ -28,7 +27,7 @@ CPC_RELEASES: List[Tuple[int, str]] = [
     (2013, "Jun 2014"),
     (2012, "Jun 2013"),
     (2011, "Jun 2012"),
-    (2010, "Mar 2012"),  # Intercensal/vintage quirk
+    (2010, "Mar 2012"),
     (2009, "Jun 2010"),
     (2008, "Jun 2009"),
     (2007, "Jun 2008"),
@@ -41,35 +40,62 @@ CPC_RELEASES: List[Tuple[int, str]] = [
     (2000, "Jun 2001"),
 ]
 
-# Styling (includes arched header + brick KPI dividers + NEW ticker strip)
+# ====== Global CSS (ticker + header + KPI bricks) ======
 st.markdown("""
 <style>
-    /* ===== Release ticker (new) ===== */
+    /* ===== Release Ticker (refined) ===== */
+    .release-controls-row{
+        display:flex; align-items:center; justify-content:center; gap:1rem;
+        margin: .25rem 0 .4rem 0;
+    }
+    .release-controls-row .stSlider, .release-controls-row .stCheckbox, .release-controls-row .stToggle{
+        margin: 0; padding: 0;
+    }
     .release-ticker-wrap{
         position: relative;
         width: 100%;
         overflow: hidden;
         background: linear-gradient(90deg,#0d47a1,#1565c0);
-        border-bottom: 2px solid #90caf9;
+        border-bottom: 1px solid rgba(255,255,255,.25);
         box-shadow: 0 2px 6px rgba(13,71,161,.15);
-        margin: -6px 0 6px 0; /* sit just above the arch */
     }
-    .release-ticker{
-        display: inline-block;
+    /* Soft fades at edges for readability */
+    .release-ticker-wrap::before, .release-ticker-wrap::after{
+        content:""; position:absolute; top:0; bottom:0; width:80px; pointer-events:none;
+        z-index:2;
+    }
+    .release-ticker-wrap::before{ left:0;
+        background: linear-gradient(90deg, rgba(13,71,161,1), rgba(13,71,161,0)); }
+    .release-ticker-wrap::after{ right:0;
+        background: linear-gradient(270deg, rgba(21,101,192,1), rgba(21,101,192,0)); }
+
+    .release-ticker-inner{
+        --marquee-speed: 135s;              /* overridden inline via style attr */
+        display: flex;
+        width: max-content;
         white-space: nowrap;
         will-change: transform;
-        padding: 6px 0;
+        animation: ticker-marquee var(--marquee-speed) linear infinite;
+        padding: 8px 0;                      /* taller, more readable */
     }
-    .release-ticker:hover { animation-play-state: paused; }
+    .release-ticker-inner:hover { animation-play-state: paused; }
+    .release-seq{
+        display: flex; align-items: center; gap: 1.25rem; padding: 0 1.2rem;
+    }
     .release-item{
-        color: #fff;
-        font-weight: 600;
-        font-size: 0.92rem;
-        letter-spacing: .1px;
-        padding: 0 .9rem;
-        opacity: 0.95;
+        color: #fff; font-weight: 700; font-size: .98rem; letter-spacing: .1px;
     }
-    .release-dot{ opacity:.6; padding: 0 .6rem; color:#e3f2fd; }
+    .release-bullet{ color:#e3f2fd; opacity:.55; }
+    .release-title-chip{
+        display:inline-flex; align-items:center; gap:.5rem;
+        background: rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.25);
+        padding:.15rem .55rem; border-radius: 999px; font-weight:700; font-size:.9rem;
+    }
+
+    @keyframes ticker-marquee {
+        0%   { transform: translateX(0); }     /* start instantly, no blank lead-in */
+        100% { transform: translateX(-50%); }  /* travel by one full sequence (we render two) */
+    }
 
     .main-header {
         font-size: 3rem;
@@ -82,109 +108,31 @@ st.markdown("""
         line-height: 1.1;
     }
     .sub-title {
-        font-size: 1.1rem;
-        color:#4a5568;
-        text-align:center;
-        margin-bottom: .5rem;
-        font-weight: 400;
-        font-style: italic;
+        font-size: 1.1rem; color:#4a5568; text-align:center; margin-bottom: .5rem;
+        font-weight: 400; font-style: italic;
     }
-    .hero-arch{
-        position:relative;
-        text-align:center;
-        padding: 6px 0 2px;
-        margin: 0 0 12px 0;
-    }
-    .arch-svg{
-        width:min(1200px,96%);
-        height:110px;
-        display:block;
-        margin:0 auto;
-    }
+    .hero-arch{ position:relative; text-align:center; padding: 6px 0 2px; margin: 0 0 12px 0; }
+    .arch-svg{ width:min(1200px,96%); height:110px; display:block; margin:0 auto; }
     @media (max-width:700px){
         .arch-svg{ height:80px; }
-        .release-item{ font-size: .88rem; }
+        .release-item{ font-size: .9rem; }
+        .release-seq{ gap: 1rem; padding: 0 .8rem; }
     }
 
     .metric-card {
         background: linear-gradient(135deg,#e3f2fd,#bbdefb);
-        padding:1rem;
-        border-radius: 15px;
+        padding:1rem; border-radius: 15px;
         box-shadow: 0 4px 6px rgba(13,71,161,.1);
-        margin-bottom:1rem;
-        text-align:center;
-        border:1px solid #90caf9;
-        height:120px;
-        display:flex;
-        flex-direction:column;
-        justify-content:center;
+        margin-bottom:1rem; text-align:center; border:1px solid #90caf9;
+        height:120px; display:flex; flex-direction:column; justify-content:center;
     }
     .metric-value { font-size: 2.2rem; font-weight: 700; color:#1a365d; margin-bottom:.3rem; line-height:1; }
     .metric-label { font-size: .85rem; color:#4a5568; font-weight: 500; line-height:1.2; }
-
-    /* Brick divider (15px wide) between KPI cards */
-    .kpi-brick {
-        width: 15px; min-width: 15px; height: 120px;
-        background: #bfbfbf;
-        border-radius: 4px;
-        box-shadow: inset 0 0 0 1px #9e9e9e, 0 1px 2px rgba(0,0,0,.08);
-        margin: 0 auto;
-        position: relative;
-    }
-    .kpi-brick::before, .kpi-brick::after {
-        content: ""; position: absolute; left: 3px; right: 3px; height: 4px;
-        background: rgba(0,0,0,0.08); border-radius: 2px;
-    }
-    .kpi-brick::before { top: 32px; }
-    .kpi-brick::after  { bottom: 32px; }
-    
-    /* Ticker controls styling */
-    .ticker-controls {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 15px;
-        margin-bottom: 10px;
-        padding: 8px 0;
-        background: rgba(13, 71, 161, 0.05);
-        border-radius: 8px;
-        border: 1px solid rgba(13, 71, 161, 0.1);
-    }
-    .ticker-toggle-group {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .ticker-speed-group {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .control-label {
-        font-size: 0.9rem;
-        color: #4a5568;
-        font-weight: 500;
-    }
-    .speed-btn {
-        background: #0d47a1;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 0.8rem;
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-    .speed-btn:hover {
-        background: #1565c0;
-    }
-    .speed-display {
-        font-size: 0.8rem;
-        color: #4a5568;
-        font-weight: 600;
-        min-width: 40px;
-        text-align: center;
-    }
+    .kpi-brick { width: 15px; min-width: 15px; height: 120px; background: #bfbfbf; border-radius: 4px;
+        box-shadow: inset 0 0 0 1px #9e9e9e, 0 1px 2px rgba(0,0,0,.08); margin: 0 auto; position: relative; }
+    .kpi-brick::before, .kpi-brick::after { content: ""; position: absolute; left: 3px; right: 3px; height: 4px;
+        background: rgba(0,0,0,0.08); border-radius: 2px; }
+    .kpi-brick::before { top: 32px; } .kpi-brick::after  { bottom: 32px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -284,7 +232,6 @@ def _code_to_region(code: Optional[int]) -> Optional[str]:
         c = int(code)
     except Exception:
         return None
-    # precedence
     if c in COOK_SET:   return "Cook County"
     if c in COLLAR_SET: return "Collar Counties"
     if c in URBAN_SET:  return "Urban Counties"
@@ -370,7 +317,6 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 
     include_age = "Age" in grouping_vars_clean
     df = attach_agegroup_column(df_source, include_age, agegroup_for_backend, custom_ranges, agegroup_map_implicit)
-
     df = attach_region_column(df, counties_map)
 
     group_fields = []
@@ -506,82 +452,57 @@ def add_concatenated_key_dynamic(
 
     return out
 
-# ===== UPDATED: tiny helper to render the moving ticker =====
-def render_release_ticker(releases: List[Tuple[int, str]], speed: int):
-    # show newest first in the strip
+# ===== Ticker renderer (duplicate content for seamless loop; accepts dynamic speed) =====
+def render_release_ticker(releases: List[Tuple[int, str]], speed_seconds: int = 135):
     rel_sorted = sorted(releases, key=lambda x: x[0], reverse=True)
-    # duplicate the sequence for seamless loop
-    seq = rel_sorted * 2
     items_html = "".join(
-        f"<span class='release-item'>Vintage {y}: {when}</span><span class='release-dot'>•</span>"
-        for (y, when) in seq
+        f"<span class='release-item'>Vintage {y}: {when}</span><span class='release-bullet'>•</span>"
+        for (y, when) in rel_sorted
     )
-    
-    # Calculate animation duration based on speed (inverse relationship)
-    duration = max(20, 120 - (speed * 10))  # Range: 20s (fastest) to 110s (slowest)
-    
-    st.markdown(f"""
-        <style>
-            @keyframes ticker-move {{
-                0%   {{ transform: translateX(0); }}
-                100% {{ transform: translateX(-50%); }}
-            }}
-            .release-ticker {{
-                animation: ticker-move {duration}s linear infinite;
-            }}
-        </style>
-        <div class="release-ticker-wrap">
-            <div class="release-ticker">{items_html}</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-def main():
-    # ===== UPDATED: Ticker controls at top center =====
-    st.markdown("""
-    <div class="ticker-controls">
-        <div class="ticker-toggle-group">
-            <span class="control-label">Show Release Dates Ticker:</span>
-    """, unsafe_allow_html=True)
-    
-    # Use columns to place controls horizontally
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    
-    with col1:
-        show_ticker = st.toggle("", value=True, key="ticker_toggle", label_visibility="collapsed")
-    
-    st.markdown("""
-        </div>
-        <div class="ticker-speed-group">
-            <span class="control-label">Speed:</span>
-    """, unsafe_allow_html=True)
-    
-    with col2:
-        # Speed control with buttons
-        speed_col1, speed_col2, speed_col3 = st.columns([1, 2, 1])
-        with speed_col1:
-            if st.button("−", key="speed_down", use_container_width=True):
-                if st.session_state.get("ticker_speed", 5) > 1:
-                    st.session_state.ticker_speed = st.session_state.ticker_speed - 1
-                    st.rerun()
-        
-        with speed_col2:
-            speed = st.slider("", min_value=1, max_value=10, value=5, 
-                            key="ticker_speed", label_visibility="collapsed")
-        
-        with speed_col3:
-            if st.button("+", key="speed_up", use_container_width=True):
-                if st.session_state.get("ticker_speed", 5) < 10:
-                    st.session_state.ticker_speed = st.session_state.ticker_speed + 1
-                    st.rerun()
-    
-    st.markdown("""
+    html = f"""
+    <div class="release-ticker-wrap" role="marquee" aria-label="County Population by Characteristics release dates">
+        <div class="release-ticker-inner" style="--marquee-speed:{int(speed_seconds)}s;">
+            <div class="release-seq">
+                <span class='release-title-chip'>📅 County Population by Characteristics — Release Dates</span>
+                <span class='release-bullet'>•</span>{items_html}
+            </div>
+            <div class="release-seq" aria-hidden="true">
+                <span class='release-title-chip'>📅 County Population by Characteristics — Release Dates</span>
+                <span class='release-bullet'>•</span>{items_html}
+            </div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
-    if show_ticker:
-        speed = st.session_state.get("ticker_speed", 5)
-        render_release_ticker(CPC_RELEASES, speed)
+def main():
+    # ===== Top-center controls for the ticker =====
+    st.session_state.setdefault("show_release_ticker", True)
+    st.session_state.setdefault("ticker_speed", 135)
+
+    # center the controls in a narrow middle column
+    _l, center, _r = st.columns([1, 3, 1])
+    with center:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            try:
+                st.session_state.show_release_ticker = st.toggle(
+                    "Show Release Strip", value=st.session_state.show_release_ticker
+                )
+            except Exception:
+                st.session_state.show_release_ticker = st.checkbox(
+                    "Show Release Strip", value=st.session_state.show_release_ticker
+                )
+        with c2:
+            st.session_state.ticker_speed = st.slider(
+                "Ticker speed (secs per loop)", min_value=60, max_value=200,
+                value=int(st.session_state.ticker_speed), step=5,
+                help="Lower = faster • Higher = slower"
+            )
+
+    # ===== Render ticker above the arch if enabled =====
+    if st.session_state.show_release_ticker:
+        render_release_ticker(CPC_RELEASES, speed_seconds=st.session_state.ticker_speed)
 
     # ===== Arched header =====
     st.markdown("""
@@ -605,7 +526,7 @@ def main():
         FORM_CONTROL_PATH
     )
 
-    # Sidebar (expects "Region" to be offered among Group Results By)
+    # Sidebar (expects “Region” in Group Results By)
     choices = render_sidebar_controls(
         years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw
     )
@@ -685,6 +606,11 @@ def main():
                         selected_agegroup=choices["agegroup_for_backend"],
                         custom_age_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                     )
+                    # Hard-guard the Region filter here so output EXACTLY matches UI selection.
+                    if choices["selected_region"] and choices["selected_region"] != "None":
+                        df_src = attach_region_column(df_src, counties_map)
+                        df_src = df_src[df_src["Region"] == choices["selected_region"]]
+
                     block = aggregate_multi(
                         df_source=df_src,
                         grouping_vars=choices["grouping_vars"],
