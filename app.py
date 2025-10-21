@@ -17,9 +17,7 @@ try:
     import frontend_bracket_utils
     from frontend_sidebar import (
         render_sidebar_controls,
-        display_census_links,
-        DATASET_URLS_FOR_VINTAGE,
-        get_dataset_links_for_years,
+        display_census_links,   # <- keep only the functions we actually use
     )
 except Exception as e:
     st.error(f"Import error: {e}")
@@ -159,6 +157,15 @@ st.markdown("""
 section[data-testid="stSidebar"] { transition: width .2s ease; }
 </style>
 """, unsafe_allow_html=True)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Small UI helper for Streamlit versions without st.toggle
+# ──────────────────────────────────────────────────────────────────────────────
+def ui_toggle(label: str, key: str, value: bool = False, help: Optional[str] = None) -> bool:
+    try:
+        return st.toggle(label, value=value, key=key, help=help)
+    except Exception:
+        return st.checkbox(label, value=value, key=key, help=help)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Utils
@@ -483,7 +490,6 @@ def add_concatenated_key_for_pivot(pivot_df: pd.DataFrame,
     cols_present = set(df.columns)
     key_cols: List[str] = []
 
-    # Prefer named county columns if present
     if {"County Code","County Name"}.issubset(cols_present): key_cols += ["County Code","County Name"]
     elif "County" in cols_present: key_cols += ["County"]
 
@@ -493,7 +499,6 @@ def add_concatenated_key_for_pivot(pivot_df: pd.DataFrame,
     if "Year" in cols_present and "Year" not in key_cols:
         key_cols.append("Year")
 
-    # Safe casting
     for c in key_cols:
         if c in df.columns:
             if pd.api.types.is_numeric_dtype(df[c]):
@@ -558,11 +563,11 @@ def render_lighting_controls_and_overlay():
     with center:
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
-            st.session_state.dark_enabled = st.toggle("🌙 Dark Screen", value=st.session_state.dark_enabled, help="Dim the screen to see lamp lighting better.")
+            st.session_state.dark_enabled = ui_toggle("🌙 Dark Screen", key="dark_enabled", value=st.session_state.dark_enabled, help="Dim the screen to see lamp lighting better.")
         with c2:
-            st.session_state.lamp_left = st.toggle("💡 Left Lamp", value=st.session_state.lamp_left)
+            st.session_state.lamp_left = ui_toggle("💡 Left Lamp", key="lamp_left", value=st.session_state.lamp_left)
         with c3:
-            st.session_state.lamp_right = st.toggle("💡 Right Lamp", value=st.session_state.lamp_right)
+            st.session_state.lamp_right = ui_toggle("💡 Right Lamp", key="lamp_right", value=st.session_state.lamp_right)
 
     # Overlay HTML
     lamp_left_cls  = "lamp left on"  if st.session_state.lamp_left  else "lamp left"
@@ -590,7 +595,7 @@ def main():
     with center:
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.session_state.show_release_ticker = st.toggle("Show Release Strip", value=st.session_state.show_release_ticker)
+            st.session_state.show_release_ticker = ui_toggle("Show Release Strip", key="show_release_ticker", value=st.session_state.show_release_ticker)
         with c2:
             st.session_state.ticker_speed = st.slider("Ticker speed (secs per loop)", 60, 200, int(st.session_state.ticker_speed), 5, help="Lower = faster • Higher = slower")
     render_release_ticker(CPC_RELEASES, speed_seconds=st.session_state.ticker_speed, show=st.session_state.show_release_ticker)
@@ -747,8 +752,6 @@ def main():
                 st.session_state.pivot_df = add_concatenated_key_for_pivot(
                     st.session_state.pivot_df, st.session_state.selected_filters, rows_used=choices["pivot_rows"]
                 )
-                # If appending, allow appending multiple row dims in one go => ConcatenatedKey remains stable by row content
-
             else:
                 st.session_state.pivot_df = pd.DataFrame()
 
