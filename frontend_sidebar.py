@@ -15,9 +15,8 @@ RACE_DISPLAY_TO_CODE = {
 RACE_CODE_TO_DISPLAY = {v: k for k, v in RACE_DISPLAY_TO_CODE.items()}
 
 # Stable patterns for CPC/ASRH “ALLDATA”—URLs follow a consistent scheme.
-# These are used for the “Download source data for selected years” control (kept internal).
 DATASET_URLS_FOR_VINTAGE: Dict[int, str] = {}
-for v in [2010] + list(range(2011, 2020)):  # 2000–2010, then 2011…2019
+for v in [2010] + list(range(2011, 2020)):  # 2010, then 2011…2019
     period = "2000-2010" if v == 2010 else f"2010-{v}"
     DATASET_URLS_FOR_VINTAGE[v] = f"https://www2.census.gov/programs-surveys/popest/datasets/{period}/counties/asrh/cc-est{v}-alldata.csv"
 for v in range(2020, 2025):  # 2020…2024
@@ -25,14 +24,12 @@ for v in range(2020, 2025):  # 2020…2024
     DATASET_URLS_FOR_VINTAGE[v] = f"https://www2.census.gov/programs-surveys/popest/datasets/{period}/counties/asrh/cc-est{v}-alldata.csv"
 
 def _nearest_vintage_for_year(y: int) -> int:
-    """Map a calendar year to the CPC 'vintage' file that contains it."""
     if y <= 2010: return 2010
     if 2011 <= y <= 2019: return y
     if 2020 <= y <= 2024: return y
     return 2024
 
 def get_dataset_links_for_years(years: List[int]) -> List[Tuple[int, str]]:
-    """Return a de-duplicated (vintage, url) list for the selected years."""
     vintages = sorted({ _nearest_vintage_for_year(int(y)) for y in years })
     return [(v, DATASET_URLS_FOR_VINTAGE.get(v, "")) for v in vintages]
 
@@ -57,10 +54,11 @@ def render_sidebar_controls(
             "Select Year(s):",
             options=years_list,
             default=years_list[-1:] if years_list else [],
+            key="ui_selected_years"
         )
         all_counties = ["All"] + sorted(counties_map.keys())
         selected_counties = st.multiselect(
-            "Select Counties:", options=all_counties, default=["All"]
+            "Select Counties:", options=all_counties, default=["All"], key="ui_selected_counties"
         )
         if "All" in selected_counties and len(selected_counties) > 1:
             st.info("Using 'All' counties (specific selections ignored).")
@@ -72,11 +70,11 @@ def render_sidebar_controls(
         for rcode in sorted(races_list_raw):
             if rcode != "All":
                 race_opts.append(RACE_CODE_TO_DISPLAY.get(rcode, rcode))
-        selected_race_display = st.selectbox("Race Filter:", race_opts, index=0)
-        selected_sex = st.radio("Sex:", ["All", "Male", "Female"], horizontal=True)
-        selected_ethnicity = st.radio("Ethnicity:", ["All", "Hispanic", "Not Hispanic"], horizontal=True)
+        selected_race_display = st.selectbox("Race Filter:", race_opts, index=0, key="ui_selected_race_display")
+        selected_sex = st.radio("Sex:", ["All", "Male", "Female"], horizontal=True, key="ui_selected_sex")
+        selected_ethnicity = st.radio("Ethnicity:", ["All", "Hispanic", "Not Hispanic"], horizontal=True, key="ui_selected_ethnicity")
         region_options = ["None", "Cook County", "Collar Counties", "Urban Counties", "Rural Counties"]
-        selected_region = st.selectbox("Region:", region_options, index=0)
+        selected_region = st.selectbox("Region:", region_options, index=0, key="ui_selected_region")
 
     # — Age Settings —
     with sb.expander("📋 Age Settings", expanded=False):
@@ -86,21 +84,22 @@ def render_sidebar_controls(
             "6-Bracket": "agegroup14",
             "2-Bracket": "agegroup15",
         }
-        selected_agegroup_display = st.selectbox("Age Group:", list(AGEGROUP_DISPLAY_TO_CODE.keys()), index=0)
+        selected_agegroup_display = st.selectbox("Age Group:", list(AGEGROUP_DISPLAY_TO_CODE.keys()), index=0, key="ui_selected_agegroup_display")
         if selected_agegroup_display != "All":
             code = AGEGROUP_DISPLAY_TO_CODE[selected_agegroup_display]
             br = agegroup_map_implicit.get(code, [])
             if br:
                 st.caption("**Age Brackets:** " + ", ".join(map(str, br)))
-        enable_custom_ranges = st.checkbox("Enable custom age ranges", value=False)
+
+        enable_custom_ranges = st.checkbox("Enable custom age ranges", value=False, key="ui_enable_custom_ranges")
         st.caption("When enabled, these custom ranges override the Age Group selection.")
         custom_ranges = []
         if enable_custom_ranges:
             # up to 3 quick ranges
             for i, (d_min, d_max) in enumerate([(1,5),(6,10),(11,15)], start=1):
-                if st.checkbox(f"Range {i}", key=f"r{i}"):
-                    mn = st.number_input(f"Min {i} (1–18)", 1, 18, d_min, key=f"mn{i}")
-                    mx = st.number_input(f"Max {i} (1–18)", 1, 18, d_max, key=f"mx{i}")
+                if st.checkbox(f"Range {i}", key=f"ui_r{i}"):
+                    mn = st.number_input(f"Min {i} (1–18)", 1, 18, d_min, key=f"ui_mn{i}")
+                    mx = st.number_input(f"Max {i} (1–18)", 1, 18, d_max, key=f"ui_mx{i}")
                     if mn <= mx:
                         custom_ranges.append((int(mn), int(mx)))
 
@@ -110,66 +109,71 @@ def render_sidebar_controls(
             "Group by any combination (or choose 'All' for totals):",
             ["All", "Age", "Race", "Ethnicity", "Sex", "Region", "County"],
             default=["All"],
+            key="ui_grouping_vars"
         )
         if "All" in grouping_vars and len(grouping_vars) > 1:
             st.info("Using 'All' (totals only). Other selections ignored.")
             grouping_vars = ["All"]
 
-    # — Pivot (optional) —
+    # — Pivot (optional) — (use keys; don't assign back to session_state)
     with sb.expander("🔁 Pivot Table (optional)", expanded=False):
-        st.session_state.setdefault("pivot_enable", False)
-        st.session_state.setdefault("pivot_rows", [])
-        st.session_state.setdefault("pivot_cols", [])
-        st.session_state.setdefault("pivot_vals", ["Count"])
-        st.session_state.setdefault("pivot_agg", "sum")
-        st.session_state.setdefault("pivot_pct_mode", "Weighted by Count (rows)")
-        st.session_state.setdefault("pivot_totals", True)
-        st.session_state.setdefault("pivot_flatten", True)
-        st.session_state.setdefault("pivot_sort_rows", False)
-        st.session_state.setdefault("pivot_export_mode", "Both")
-        st.session_state.setdefault("pivot_append_mode", False)
-
-        st.session_state.pivot_enable = st.checkbox("Enable pivot", value=st.session_state.pivot_enable)
-
         dim_options = ["County Name","County Code","Region","AgeGroup","Race","Ethnicity","Sex","Year"]
         default_rows = ["AgeGroup"] if "AgeGroup" in dim_options else []
         default_cols = ["Race"]
 
-        st.session_state.pivot_rows = st.multiselect("Rows", dim_options, default=st.session_state.pivot_rows or default_rows, help="Choose one or more row variables.")
-        st.session_state.pivot_cols = st.multiselect("Columns", dim_options, default=st.session_state.pivot_cols or default_cols)
-        st.session_state.pivot_vals = st.multiselect("Values", ["Count","Percent"], default=st.session_state.pivot_vals)
-        st.session_state.pivot_agg = st.selectbox("Aggregation for Count", ["sum","mean","median","max","min"], index=["sum","mean","median","max","min"].index(st.session_state.pivot_agg))
-        st.session_state.pivot_pct_mode = st.selectbox("Percent aggregation", ["Weighted by Count (rows)","Mean (unweighted)"], index=0 if st.session_state.pivot_pct_mode.startswith("Weighted") else 1)
-        st.session_state.pivot_totals = st.checkbox("Show totals (margins)", value=st.session_state.pivot_totals)
-        st.session_state.pivot_flatten = st.checkbox("Flatten headers for CSV", value=st.session_state.pivot_flatten)
-        st.session_state.pivot_sort_rows = st.checkbox("Sort rows by grand total (desc)", value=st.session_state.pivot_sort_rows)
+        st.checkbox("Enable pivot", value=st.session_state.get("pivot_enable", False), key="pivot_enable")
 
-        # NEW: Append mode
-        st.session_state.pivot_append_mode = st.checkbox(
+        st.multiselect("Rows", dim_options, default=st.session_state.get("pivot_rows", default_rows), key="pivot_rows",
+                       help="Choose one or more row variables.")
+        st.multiselect("Columns", dim_options, default=st.session_state.get("pivot_cols", default_cols), key="pivot_cols")
+        st.multiselect("Values", ["Count","Percent"], default=st.session_state.get("pivot_vals", ["Count"]), key="pivot_vals")
+
+        agg_opts = ["sum","mean","median","max","min"]
+        st.selectbox("Aggregation for Count", agg_opts,
+                     index=agg_opts.index(st.session_state.get("pivot_agg","sum") if st.session_state.get("pivot_agg","sum") in agg_opts else "sum"),
+                     key="pivot_agg")
+
+        pct_opts = ["Weighted by Count (rows)","Mean (unweighted)"]
+        pct_val = st.session_state.get("pivot_pct_mode", pct_opts[0])
+        st.selectbox("Percent aggregation", pct_opts,
+                     index=pct_opts.index(pct_val) if pct_val in pct_opts else 0,
+                     key="pivot_pct_mode")
+
+        st.checkbox("Show totals (margins)", value=st.session_state.get("pivot_totals", True), key="pivot_totals")
+        st.checkbox("Flatten headers for CSV", value=st.session_state.get("pivot_flatten", True), key="pivot_flatten")
+        st.checkbox("Sort rows by grand total (desc)", value=st.session_state.get("pivot_sort_rows", False), key="pivot_sort_rows")
+
+        st.checkbox(
             "Append when multiple row variables are selected (one pivot per row var, stacked)",
-            value=st.session_state.pivot_append_mode,
+            value=st.session_state.get("pivot_append_mode", False),
+            key="pivot_append_mode",
             help="If checked and you choose multiple row variables, the app builds one pivot per row variable and appends them in a single table with a 'PivotRowDim' column."
         )
 
-        st.session_state.pivot_export_mode = st.radio("CSV download includes", ["Raw","Pivot","Both"], index=["Raw","Pivot","Both"].index(st.session_state.pivot_export_mode))
+        exp_opts = ["Raw","Pivot","Both"]
+        st.radio("CSV download includes", exp_opts,
+                 index=exp_opts.index(st.session_state.get("pivot_export_mode","Both")) if st.session_state.get("pivot_export_mode","Both") in exp_opts else 2,
+                 key="pivot_export_mode")
 
     # — Output Options —
     with sb.expander("⚙️ Output Options", expanded=False):
         include_breakdown = st.checkbox(
             "Include Individual County Breakdowns",
             value=True,
+            key="ui_include_breakdown",
             help="Show a separate table for each selected county (in addition to combined results)."
         )
         if "County" in grouping_vars and include_breakdown:
             st.info("Grouping by County already provides county rows. Turning off extra breakdowns.")
             include_breakdown = False
-        debug_mode = st.checkbox("Debug Mode", value=False)
+        debug_mode = st.checkbox("Debug Mode", value=False, key="ui_debug_mode")
 
     # — UI Preferences —
     with sb.expander("🧰 UI Preferences", expanded=False):
-        ui_sidebar_resizable = st.checkbox("Enable sidebar resizing", value=False, help="When enabled, you can set a custom sidebar width.")
-        ui_sidebar_width = st.slider("Sidebar width (px)", 260, 520, 340, 10, disabled=not ui_sidebar_resizable)
-        ui_sidebar_locked = st.checkbox("Lock sidebar width", value=False, disabled=not ui_sidebar_resizable)
+        ui_sidebar_resizable = st.checkbox("Enable sidebar resizing", value=False, key="ui_sidebar_resizable",
+                                           help="When enabled, you can set a custom sidebar width.")
+        ui_sidebar_width = st.slider("Sidebar width (px)", 260, 520, 340, 10, key="ui_sidebar_width", disabled=not ui_sidebar_resizable)
+        ui_sidebar_locked = st.checkbox("Lock sidebar width", value=False, key="ui_sidebar_locked", disabled=not ui_sidebar_resizable)
 
     return {
         "debug_mode": debug_mode,
@@ -187,18 +191,18 @@ def render_sidebar_controls(
         "grouping_vars": grouping_vars,
         "include_breakdown": include_breakdown,
 
-        # Pivot selections back to app
-        "pivot_enable": st.session_state.pivot_enable,
-        "pivot_rows": st.session_state.pivot_rows,
-        "pivot_cols": st.session_state.pivot_cols,
-        "pivot_vals": st.session_state.pivot_vals,
-        "pivot_agg": st.session_state.pivot_agg,
-        "pivot_pct_mode": st.session_state.pivot_pct_mode,
-        "pivot_totals": st.session_state.pivot_totals,
-        "pivot_flatten": st.session_state.pivot_flatten,
-        "pivot_sort_rows": st.session_state.pivot_sort_rows,
-        "pivot_export_mode": st.session_state.pivot_export_mode,
-        "pivot_append_mode": st.session_state.pivot_append_mode,
+        # Pivot selections are read from session_state directly in app.py
+        "pivot_enable": st.session_state.get("pivot_enable", False),
+        "pivot_rows": st.session_state.get("pivot_rows", []),
+        "pivot_cols": st.session_state.get("pivot_cols", []),
+        "pivot_vals": st.session_state.get("pivot_vals", ["Count"]),
+        "pivot_agg": st.session_state.get("pivot_agg", "sum"),
+        "pivot_pct_mode": st.session_state.get("pivot_pct_mode", "Weighted by Count (rows)"),
+        "pivot_totals": st.session_state.get("pivot_totals", True),
+        "pivot_flatten": st.session_state.get("pivot_flatten", True),
+        "pivot_sort_rows": st.session_state.get("pivot_sort_rows", False),
+        "pivot_export_mode": st.session_state.get("pivot_export_mode", "Both"),
+        "pivot_append_mode": st.session_state.get("pivot_append_mode", False),
 
         # UI prefs
         "ui_sidebar_resizable": ui_sidebar_resizable,
@@ -250,13 +254,12 @@ def display_census_links(selected_years: List[int] = None):
         md += "- Modified Race Data: https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html\n"
         st.markdown(md)
 
-        # NEW: direct source data download links for the user's selected years
+        # Direct source data download links for the user's selected years
         if selected_years:
             st.markdown("---")
             st.subheader("Download Source Data (Selected Years)")
             for v, url in get_dataset_links_for_years(selected_years):
                 if url:
-                    # Fallback if Streamlit doesn't have link_button yet
                     try:
                         st.link_button(f"⬇️ CC-EST{v}-ALLDATA (CSV)", url)
                     except Exception:
