@@ -5,32 +5,70 @@ from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
 # Page setup
-st.set_page_config(page_title="Illinois Population Data Explorer", layout="wide", page_icon="🏛️")
+st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
-# Styling
+# Styling (includes arched header + brick KPI dividers)
 st.markdown("""
 <style>
-    .main-header { font-size: 3rem; background: linear-gradient(135deg,#0d47a1,#1976d2);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align:center;
-        margin-bottom: .5rem; font-weight: 800; line-height: 1.1; }
-    .sub-title { font-size: 1.2rem; color:#4a5568; text-align:center; margin-bottom: 2rem;
-        font-weight: 400; font-style: italic; }
-    .metric-card { background: linear-gradient(135deg,#e3f2fd,#bbdefb); padding:1rem; border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(13,71,161,.1); margin-bottom:1rem; text-align:center; border:1px solid #90caf9;
-        height:120px; display:flex; flex-direction:column; justify-content:center; }
+    .main-header {
+        font-size: 3rem;
+        background: linear-gradient(135deg,#0d47a1,#1976d2);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align:center;
+        margin-bottom: .25rem;
+        font-weight: 800;
+        line-height: 1.1;
+    }
+    .sub-title {
+        font-size: 1.1rem;
+        color:#4a5568;
+        text-align:center;
+        margin-bottom: .5rem;
+        font-weight: 400;
+        font-style: italic;
+    }
+    .hero-arch{
+        position:relative;
+        text-align:center;
+        padding: 6px 0 2px;
+        margin: 0 0 12px 0;
+    }
+    .arch-svg{
+        width:min(1200px,96%);
+        height:110px;
+        display:block;
+        margin:0 auto;
+    }
+    @media (max-width:700px){
+        .arch-svg{ height:80px; }
+    }
+
+    .metric-card {
+        background: linear-gradient(135deg,#e3f2fd,#bbdefb);
+        padding:1rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(13,71,161,.1);
+        margin-bottom:1rem;
+        text-align:center;
+        border:1px solid #90caf9;
+        height:120px;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+    }
     .metric-value { font-size: 2.2rem; font-weight: 700; color:#1a365d; margin-bottom:.3rem; line-height:1; }
     .metric-label { font-size: .85rem; color:#4a5568; font-weight: 500; line-height:1.2; }
 
-    /* ----- Brick divider (15px wide) ----- */
+    /* Brick divider (15px wide) between KPI cards */
     .kpi-brick {
         width: 15px; min-width: 15px; height: 120px;
-        background: #bfbfbf;               /* concrete color */
+        background: #bfbfbf;
         border-radius: 4px;
         box-shadow: inset 0 0 0 1px #9e9e9e, 0 1px 2px rgba(0,0,0,.08);
-        margin: 0 auto;                     /* center inside its column */
+        margin: 0 auto;
         position: relative;
     }
-    /* add two shallow grooves to hint at a cinder block */
     .kpi-brick::before, .kpi-brick::after {
         content: ""; position: absolute; left: 3px; right: 3px; height: 4px;
         background: rgba(0,0,0,0.08); border-radius: 2px;
@@ -199,35 +237,70 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
     return grouped[col_order]
 
 def main():
-    st.markdown('<div class="main-header">🏛️ Illinois Population Data Explorer</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Analyze demographic trends across Illinois counties from 2000–2024</div>', unsafe_allow_html=True)
+    # ===== Arched header (matches screenshot) =====
+    st.markdown("""
+<div class="hero-arch">
+  <!-- top arc -->
+  <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M10,190 Q600,-150 1190,190"
+          stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </svg>
 
+  <div class="main-header">Illinois Population Data</div>
+  <div class="sub-title">Analyze demographic trends across Illinois counties from 2000–2024</div>
+
+  <!-- bottom arc -->
+  <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M10,10 Q600,350 1190,10"
+          stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </svg>
+</div>
+""", unsafe_allow_html=True)
+
+    # Load form controls
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
-     agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data("./form_control_UI_data.csv")
+     agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(
+        FORM_CONTROL_PATH
+    )
 
-    choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
+    # Sidebar (all sections closed; includes "Group Results By")
+    choices = render_sidebar_controls(
+        years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw
+    )
 
-    # ---- KPI row with 15px bricks between cards ----
+    # KPI row with 15px bricks between cards
     st.markdown("## 📊 Data Overview")
     c1, b1, c2, b2, c3, b3, c4 = st.columns([1, 0.07, 1, 0.07, 1, 0.07, 1])
 
     with c1:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
+        st.markdown(
+            f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""",
+            unsafe_allow_html=True,
+        )
     with b1:
         st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
 
     with c2:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
+        st.markdown(
+            f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""",
+            unsafe_allow_html=True,
+        )
     with b2:
         st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
 
     with c3:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
+        st.markdown(
+            f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""",
+            unsafe_allow_html=True,
+        )
     with b3:
         st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
 
     with c4:
-        st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
+        st.markdown(
+            f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""",
+            unsafe_allow_html=True,
+        )
 
     # Buttons + Census links row (Census links on the RIGHT, default closed)
     st.markdown("---")
@@ -245,9 +318,11 @@ def main():
     with right_col:
         display_census_links()
 
+    # State
     st.session_state.setdefault("report_df", pd.DataFrame())
     st.session_state.setdefault("selected_filters", {})
 
+    # Generate flow
     if go:
         if not choices["selected_years"]:
             st.warning("⚠️ Please select at least one year."); st.stop()
@@ -270,7 +345,7 @@ def main():
                 frames = []
                 for year in choices["selected_years"]:
                     df_src = backend_main_processing.process_population_data(
-                        data_folder="./data",
+                        data_folder=DATA_FOLDER,
                         agegroup_map_explicit=agegroup_map_explicit,
                         counties_map=counties_map,
                         selected_years=[year],
@@ -296,7 +371,7 @@ def main():
                         frames.append(block)
                 return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-            all_frames = []
+            all_frames: List[pd.DataFrame] = []
             if "All" in choices["selected_counties"]:
                 combined = build_block(["All"], "All Counties")
             else:
@@ -313,6 +388,7 @@ def main():
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
 
+    # Results / download
     if not st.session_state.report_df.empty:
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
