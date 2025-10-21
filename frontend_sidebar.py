@@ -15,7 +15,7 @@ RACE_DISPLAY_TO_CODE = {
 RACE_CODE_TO_DISPLAY = {v: k for k, v in RACE_DISPLAY_TO_CODE.items()}
 
 # Stable patterns for CPC/ASRH “ALLDATA”—URLs follow a consistent scheme.
-# These are used for the “Download source data for selected years” control.
+# These are used for the “Download source data for selected years” control (kept internal).
 DATASET_URLS_FOR_VINTAGE: Dict[int, str] = {}
 for v in [2010] + list(range(2011, 2020)):  # 2000–2010, then 2011…2019
     period = "2000-2010" if v == 2010 else f"2010-{v}"
@@ -256,7 +256,11 @@ def display_census_links(selected_years: List[int] = None):
             st.subheader("Download Source Data (Selected Years)")
             for v, url in get_dataset_links_for_years(selected_years):
                 if url:
-                    st.link_button(f"⬇️ CC-EST{v}-ALLDATA (CSV)", url)
+                    # Fallback if Streamlit doesn't have link_button yet
+                    try:
+                        st.link_button(f"⬇️ CC-EST{v}-ALLDATA (CSV)", url)
+                    except Exception:
+                        st.markdown(f"[⬇️ CC-EST{v}-ALLDATA (CSV)]({url})")
 
         # Rationale for the 18 CPC age groups
         st.markdown("---")
