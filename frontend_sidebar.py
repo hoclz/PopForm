@@ -163,3 +163,16 @@ def display_census_links():
         md += "- [Methodology Overview](https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html)\n"
         md += "- [Modified Race Data](https://www.census.gov/programs-surveys/popest/technical-documentation/research/modified-race-data.html)\n"
         st.markdown(md)
+
+        # --- About the 18 CPC Age Groups ---
+        st.markdown("---")
+        st.subheader("About the 18 CPC Age Groups")
+        st.markdown("""
+The **County Population by Characteristics (CPC)** files publish 5-year age buckets for county-level estimates, aligned to
+federal dissemination standards and disclosure avoidance. The **18 groups** commonly used are:  
+**0–4, 5–9, 10–14, 15–19, 20–24, 25–29, 30–34, 35–39, 40–44, 45–49, 50–54, 55–59, 60–64, 65–69, 70–74, 75–79, 80–84, 80+**.  
+
+These brackets harmonize vintage-to-vintage files, keep cells large enough to protect privacy, and match common analytic
+use cases (e.g., dependency ratios, school-age/prime-age/older cohorts). When **18-Bracket** is selected, results are aggregated
+to this canonical set for comparability across years and regions.
+""")
