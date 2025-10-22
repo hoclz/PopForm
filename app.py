@@ -10,14 +10,14 @@ from typing import List, Tuple, Dict, Optional
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
-# External modules (your existing back-end pieces + our modular sidebar)
+# External modules
 try:
     import backend_main_processing
     import frontend_data_loader
     import frontend_bracket_utils
     from frontend_sidebar import (
         render_sidebar_controls,
-        display_census_links,   # <- keep only the functions we actually use
+        display_census_links,
     )
 except Exception as e:
     st.error(f"Import error: {e}")
@@ -52,7 +52,7 @@ CODE_TO_BRACKET = {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Release ticker (2000–2024 CPC/ASRH releases; keep stable + editable)
+# Release ticker (2000–2024 CPC/ASRH releases; editable)
 # ──────────────────────────────────────────────────────────────────────────────
 CPC_RELEASES: List[Tuple[int, str]] = [
     (2024, "Jun 23, 2025"),
@@ -147,7 +147,7 @@ st.markdown("""
 
 /* KPI cards + bricks */
 .metric-card{background:linear-gradient(135deg,#e3f2fd,#bbdefb);padding:1rem;border-radius:15px;box-shadow:0 4px 6px rgba(13,71,161,.1);margin-bottom:1rem;text-align:center;border:1px solid #90caf9;height:120px;display:flex;flex-direction:column;justify-content:center;}
-.metric-value{font-size:2.2rem;font-weight:700;color:#1a365d;margin-bottom:.3rem;line-height:1;}
+.metric-value{font-size:2.2rem;font-weight:700;color:#1a365d;margin-bottom:.3rem;line-height:1.2;}
 .metric-label{font-size:.85rem;color:#4a5568;font-weight:500;line-height:1.2;}
 .kpi-brick{width:15px;min-width:15px;height:120px;background:#bfbfbf;border-radius:4px;box-shadow:inset 0 0 0 1px #9e9e9e,0 1px 2px rgba(0,0,0,.08);margin:0 auto;position:relative;}
 .kpi-brick::before,.kpi-brick::after{content:"";position:absolute;left:3px;right:3px;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;}
@@ -401,7 +401,6 @@ def build_pivot_table(df: pd.DataFrame,
     """
     if df is None or df.empty or not values: return pd.DataFrame()
 
-    # Keep only dims that exist
     rows = [r for r in rows if r in df.columns]
     cols = [c for c in cols if c in df.columns]
 
@@ -458,7 +457,6 @@ def build_pivot_table(df: pd.DataFrame,
 
         pivot = pivot.reset_index() if use_rows else pivot.reset_index(drop=False)
 
-        # Round percents nicely
         for col in pivot.columns:
             if isinstance(col, str) and ("Percent" in col or col == "Percent"):
                 try:
@@ -481,10 +479,6 @@ def build_pivot_table(df: pd.DataFrame,
 def add_concatenated_key_for_pivot(pivot_df: pd.DataFrame,
                                    selected_filters: Dict[str, object],
                                    rows_used: List[str]) -> pd.DataFrame:
-    """
-    Add a ConcatenatedKey to the pivot preview (row-level key).
-    Uses the available row columns (and any County/Year if present).
-    """
     if pivot_df is None or pivot_df.empty: return pivot_df
     df = pivot_df.copy()
     cols_present = set(df.columns)
@@ -554,25 +548,30 @@ def render_eye_header():
 """, unsafe_allow_html=True)
 
 def render_lighting_controls_and_overlay():
-    st.session_state.setdefault("lamp_left", False)
-    st.session_state.setdefault("lamp_right", False)
-    st.session_state.setdefault("dark_enabled", True)
+    # Ensure defaults exist (do NOT assign widget results back)
+    if "dark_enabled" not in st.session_state: st.session_state["dark_enabled"] = True
+    if "lamp_left" not in st.session_state:   st.session_state["lamp_left"] = False
+    if "lamp_right" not in st.session_state:  st.session_state["lamp_right"] = False
 
-    # Controls row (top-center)
     _l, center, _r = st.columns([1, 3, 1])
     with center:
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
-            st.session_state.dark_enabled = ui_toggle("🌙 Dark Screen", key="dark_enabled", value=st.session_state.dark_enabled, help="Dim the screen to see lamp lighting better.")
+            dark_enabled = ui_toggle(
+                "🌙 Dark Screen",
+                key="dark_enabled",
+                value=st.session_state["dark_enabled"],
+                help="Dim the screen to see lamp lighting better.",
+            )
         with c2:
-            st.session_state.lamp_left = ui_toggle("💡 Left Lamp", key="lamp_left", value=st.session_state.lamp_left)
+            lamp_left = ui_toggle("💡 Left Lamp", key="lamp_left", value=st.session_state["lamp_left"])
         with c3:
-            st.session_state.lamp_right = ui_toggle("💡 Right Lamp", key="lamp_right", value=st.session_state.lamp_right)
+            lamp_right = ui_toggle("💡 Right Lamp", key="lamp_right", value=st.session_state["lamp_right"])
 
-    # Overlay HTML
-    lamp_left_cls  = "lamp left on"  if st.session_state.lamp_left  else "lamp left"
-    lamp_right_cls = "lamp right on" if st.session_state.lamp_right else "lamp right"
-    wrapper_cls    = "" if st.session_state.dark_enabled else "light-off"
+    # Overlay HTML (use local vars; widgets already updated session_state)
+    lamp_left_cls  = "lamp left on"  if lamp_left  else "lamp left"
+    lamp_right_cls = "lamp right on" if lamp_right else "lamp right"
+    wrapper_cls    = "" if dark_enabled else "light-off"
     overlay_html = f"""
 <div id="global-lighting-overlay" class="{wrapper_cls}">
   <div class="dim"></div>
@@ -589,16 +588,28 @@ def main():
     # Lighting controls + release ticker controls (top)
     render_lighting_controls_and_overlay()
 
-    st.session_state.setdefault("show_release_ticker", True)
-    st.session_state.setdefault("ticker_speed", 135)
+    # Ticker controls: ensure defaults
+    if "show_release_ticker" not in st.session_state: st.session_state["show_release_ticker"] = True
+    if "ticker_speed" not in st.session_state:        st.session_state["ticker_speed"] = 135
+
     _l, center, _r = st.columns([1, 3, 1])
     with center:
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.session_state.show_release_ticker = ui_toggle("Show Release Strip", key="show_release_ticker", value=st.session_state.show_release_ticker)
+            ui_toggle("Show Release Strip", key="show_release_ticker", value=st.session_state["show_release_ticker"])
         with c2:
-            st.session_state.ticker_speed = st.slider("Ticker speed (secs per loop)", 60, 200, int(st.session_state.ticker_speed), 5, help="Lower = faster • Higher = slower")
-    render_release_ticker(CPC_RELEASES, speed_seconds=st.session_state.ticker_speed, show=st.session_state.show_release_ticker)
+            st.slider(
+                "Ticker speed (secs per loop)",
+                60, 200, int(st.session_state["ticker_speed"]), 5,
+                key="ticker_speed",
+                help="Lower = faster • Higher = slower",
+            )
+
+    render_release_ticker(
+        CPC_RELEASES,
+        speed_seconds=st.session_state["ticker_speed"],
+        show=st.session_state["show_release_ticker"],
+    )
 
     # Eye header
     render_eye_header()
@@ -637,7 +648,7 @@ def main():
     with c4:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
-    # Buttons + Census links (right column also shows source downloads for selected years)
+    # Buttons + Census links
     st.markdown("---")
     left_col, right_col = st.columns([3, 2])
     with left_col:
@@ -736,6 +747,7 @@ def main():
 
             # Build pivot (preview) if requested
             if choices["pivot_enable"] and not st.session_state.report_df.empty:
+                from typing import cast
                 st.session_state.pivot_df = build_pivot_table(
                     st.session_state.report_df,
                     rows=choices["pivot_rows"],
