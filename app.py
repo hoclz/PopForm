@@ -332,7 +332,7 @@ def render_release_ticker(releases: List[Tuple[int, str]], speed_seconds: int = 
     """
     st.markdown(html, unsafe_allow_html=True)
 
-# ===== Pivot builder =====
+# ===== Pivot builder (with duplicate-dimension safety) =====
 def build_pivot_table(df: pd.DataFrame,
                       rows: List[str], cols: List[str], values: List[str],
                       agg_count: str = "sum",
@@ -345,6 +345,11 @@ def build_pivot_table(df: pd.DataFrame,
     # keep only chosen dims that actually exist
     rows = [r for r in rows if r in df.columns]
     cols = [c for c in cols if c in df.columns]
+
+    # SAFETY: if caller forgot to de-conflict, drop overlaps from columns
+    overlap = sorted(set(rows) & set(cols))
+    if overlap:
+        cols = [c for c in cols if c not in overlap]
     
     # Check if we have at least one grouping dimension (rows or columns)
     if not rows and not cols:
@@ -355,7 +360,6 @@ def build_pivot_table(df: pd.DataFrame,
     
     # Count
     if "Count" in values and "Count" in df.columns:
-        # Handle case where rows or cols might be empty
         index_param = rows or None
         columns_param = cols or None
         
@@ -487,7 +491,7 @@ def main():
     # Sidebar (expects “Region” in Group Results By)
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
-    # === NEW: Pivot controls (sidebar) ===
+    # === Pivot controls (sidebar) ===
     with st.sidebar.expander("📊 Pivot Table (optional)", expanded=False):
         st.session_state.setdefault("pivot_enable", False)
         st.session_state.setdefault("pivot_rows", [])
@@ -504,7 +508,7 @@ def main():
 
         dim_options = ["County Name","County Code","Region","AgeGroup","Race","Ethnicity","Sex","Year"]
         # sensible defaults
-        default_rows = ["AgeGroup"] if "AgeGroup" in dim_options else []
+        default_rows = ["AgeGroup"]
         default_cols = ["Race"]
 
         st.session_state.pivot_rows = st.multiselect("Rows", dim_options, default=st.session_state.pivot_rows or default_rows)
@@ -516,6 +520,18 @@ def main():
         st.session_state.pivot_flatten = st.checkbox("Flatten headers for CSV", value=st.session_state.pivot_flatten)
         st.session_state.pivot_sort_rows = st.checkbox("Sort rows by grand total (desc)", value=st.session_state.pivot_sort_rows)
         st.session_state.pivot_export_mode = st.radio("CSV download includes", ["Raw","Pivot","Both"], index=["Raw","Pivot","Both"].index(st.session_state.pivot_export_mode))
+
+        # NEW: warn + compute effective (de-conflicted) selections
+        dups = sorted(set(st.session_state.pivot_rows) & set(st.session_state.pivot_cols))
+        if dups:
+            st.warning("⚠️ Rows and Columns cannot share the same field(s): **{}**. "
+                       "For preview/export, these will be removed from **Columns**."
+                       .format(", ".join(dups)))
+            st.session_state["pivot_rows_eff"] = list(st.session_state.pivot_rows)
+            st.session_state["pivot_cols_eff"] = [c for c in st.session_state.pivot_cols if c not in dups]
+        else:
+            st.session_state["pivot_rows_eff"] = list(st.session_state.pivot_rows)
+            st.session_state["pivot_cols_eff"] = list(st.session_state.pivot_cols)
 
     # KPI row
     st.markdown("## 📊 Data Overview")
@@ -633,8 +649,8 @@ def main():
             if st.session_state.pivot_enable and not st.session_state.report_df.empty:
                 st.session_state.pivot_df = build_pivot_table(
                     st.session_state.report_df,
-                    rows=st.session_state.pivot_rows,
-                    cols=st.session_state.pivot_cols,
+                    rows=st.session_state.get("pivot_rows_eff", st.session_state.pivot_rows),
+                    cols=st.session_state.get("pivot_cols_eff", st.session_state.pivot_cols),
                     values=st.session_state.pivot_vals,
                     agg_count=st.session_state.pivot_agg,
                     percent_mode=st.session_state.pivot_pct_mode,
@@ -680,11 +696,13 @@ def main():
         if show_pvt and not st.session_state.pivot_df.empty:
             st.markdown("### 🔁 Pivot Preview")
             st.dataframe(st.session_state.pivot_df, use_container_width=True)
+            rows_meta = ", ".join(st.session_state.get("pivot_rows_eff", st.session_state.pivot_rows)) or "(none)"
+            cols_meta = ", ".join(st.session_state.get("pivot_cols_eff", st.session_state.pivot_cols)) or "(none)"
             pmeta = [
                 "# Illinois Population Data Explorer - Pivot Export",
                 f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                f"# Rows: {', '.join(st.session_state.pivot_rows) or '(none)'}",
-                f"# Columns: {', '.join(st.session_state.pivot_cols) or '(none)'}",
+                f"# Rows: {rows_meta}",
+                f"# Columns: {cols_meta}",
                 f"# Values: {', '.join(st.session_state.pivot_vals)}",
                 f"# Count agg: {st.session_state.pivot_agg}",
                 f"# Percent mode: {st.session_state.pivot_pct_mode}",
