@@ -1,9 +1,10 @@
+# app.py — Illinois Population Data Explorer (pivot/Arrow-safe)
 import streamlit as st
 import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Page setup
@@ -385,7 +386,7 @@ def add_concatenated_key_dynamic(df: pd.DataFrame, selected_filters: Dict[str, o
     return out
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Pivot helpers
+# Pivot helpers  (Arrow-safe)
 # ──────────────────────────────────────────────────────────────────────────────
 def build_pivot_table(df: pd.DataFrame,
                       rows: List[str], cols: List[str], values: List[str],
@@ -395,13 +396,11 @@ def build_pivot_table(df: pd.DataFrame,
                       sort_rows: bool = False,
                       append_per_row_var: bool = False) -> pd.DataFrame:
     """
-    Build a pivot preview. If append_per_row_var=True and more than one row var is chosen,
-    this creates one pivot per row variable and appends them (long format) with a column
-    'PivotRowDim' to identify which row variable produced the block.
-
-    Robust against empty row/column selections by producing a one-row total.
+    Build a pivot preview. Robust against empty row/column selections.
+    If append_per_row_var=True and >1 row var is chosen, builds one pivot per row var
+    and appends them with a 'PivotRowDim' column.
     """
-    if df is None or df.empty or not values: 
+    if df is None or df.empty or not values:
         return pd.DataFrame()
 
     # Keep only columns that exist
@@ -410,9 +409,9 @@ def build_pivot_table(df: pd.DataFrame,
     values = [v for v in values if v in {"Count","Percent"} and v in df.columns]
 
     def _single_pivot(use_rows: List[str]) -> pd.DataFrame:
-        # ── NEW: if there are no group keys at all, compute a single-row total safely ──
+        # If there are no group keys at all, compute a single-row total safely.
         if not use_rows and not cols:
-            result = {}
+            result: Dict[str, Any] = {}
             if "Count" in values:
                 try:
                     if hasattr(df["Count"], agg_count):
@@ -484,7 +483,7 @@ def build_pivot_table(df: pd.DataFrame,
         if flatten and isinstance(pivot.columns, pd.MultiIndex):
             pivot.columns = [" | ".join([str(x) for x in tup if str(x) != ""]) for tup in pivot.columns.to_flat_index()]
 
-        # IMPORTANT: avoid stray "index" column when use_rows is empty
+        # IMPORTANT: avoid stray "index" column when no row keys
         pivot = pivot.reset_index() if use_rows else pivot.reset_index(drop=True)
 
         # round percents
@@ -535,6 +534,48 @@ def add_concatenated_key_for_pivot(pivot_df: pd.DataFrame,
     else:
         df["ConcatenatedKey"] = ""
     return df
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Arrow-safe sanitizer for st.dataframe
+# ──────────────────────────────────────────────────────────────────────────────
+def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
+    """Make a DataFrame safe for PyArrow conversion in Streamlit."""
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+
+    out = df.copy()
+
+    # 1) Ensure string, unique column names
+    cols = [str(c) for c in out.columns]
+    seen = {}
+    newcols = []
+    for c in cols:
+        base = c
+        k = 1
+        while c in seen:
+            k += 1
+            c = f"{base}.{k}"
+        seen[c] = True
+        newcols.append(c)
+    out.columns = newcols
+
+    # 2) Convert unsupported objects to strings
+    for col in out.columns:
+        s = out[col]
+        if pd.api.types.is_categorical_dtype(s):
+            out[col] = s.astype(str)
+            continue
+        if s.dtype == "object":
+            def _scalarize(x: Any) -> Any:
+                if x is None or (pd.isna(x) if not isinstance(x, str) else False):
+                    return None
+                if isinstance(x, (str, int, float, bool, np.integer, np.floating, np.bool_)):
+                    return x
+                # lists/tuples/dicts/arrays or anything exotic → stringify
+                return str(x)
+            out[col] = s.map(_scalarize)
+
+    return out
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Ticker + Eye + Lamps renderers
@@ -719,7 +760,7 @@ def main():
             "group_by": choices["grouping_vars"],
         }
 
-        # FIXED: ensure region name is used only when a real region is selected
+        # Real “All Counties” label vs Region-specific label
         def _county_label_for_all():
             if choices["selected_region"] and choices["selected_region"] != "None":
                 return choices["selected_region"]
@@ -742,7 +783,7 @@ def main():
                         selected_agegroup=choices["agegroup_for_backend"],
                         custom_age_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                     )
-                    # Exact Region filter so Cook ≠ others
+                    # Exact Region filter (Cook ≠ others)
                     if choices["selected_region"] and choices["selected_region"] != "None":
                         df_src = attach_region_column(df_src, counties_map)
                         df_src = df_src[df_src["Region"] == choices["selected_region"]]
@@ -761,7 +802,8 @@ def main():
                 return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
             all_frames: List[pd.DataFrame] = []
-            combined = build_block(["All"], _county_label_for_all()) if "All" in choices["selected_counties"] else build_block(choices["selected_counties"], "Selected Counties")
+            combined = build_block(["All"], _county_label_for_all()) if "All" in choices["selected_counties"] \
+                       else build_block(choices["selected_counties"], "Selected Counties")
             if not combined.empty: all_frames.append(combined)
 
             if choices["include_breakdown"] and "All" not in choices["selected_counties"]:
@@ -781,7 +823,6 @@ def main():
 
             # Build pivot (preview) if requested
             if choices["pivot_enable"] and not st.session_state.report_df.empty:
-                from typing import cast
                 st.session_state.pivot_df = build_pivot_table(
                     st.session_state.report_df,
                     rows=choices["pivot_rows"],
@@ -794,7 +835,6 @@ def main():
                     sort_rows=choices["pivot_sort_rows"],
                     append_per_row_var=choices["pivot_append_mode"]
                 )
-                # add ConcatenatedKey to the preview too
                 st.session_state.pivot_df = add_concatenated_key_for_pivot(
                     st.session_state.pivot_df, st.session_state.selected_filters, rows_used=choices["pivot_rows"]
                 )
@@ -805,7 +845,7 @@ def main():
     if not st.session_state.report_df.empty:
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
-        st.dataframe(st.session_state.report_df, use_container_width=True)
+        st.dataframe(sanitize_for_streamlit(st.session_state.report_df), use_container_width=True)
 
         # CSV (Raw)
         meta = [
@@ -836,7 +876,7 @@ def main():
         # Pivot preview & download
         if show_pvt and not st.session_state.pivot_df.empty:
             st.markdown("### 🔁 Pivot Preview")
-            st.dataframe(st.session_state.pivot_df, use_container_width=True)
+            st.dataframe(sanitize_for_streamlit(st.session_state.pivot_df), use_container_width=True)
             pmeta = [
                 "# Illinois Population Data Explorer - Pivot Export",
                 f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
