@@ -339,38 +339,84 @@ def build_pivot_table(df: pd.DataFrame,
                       percent_mode: str = "Weighted by Count (rows)",
                       margins: bool = True, flatten: bool = True,
                       sort_rows: bool = False) -> pd.DataFrame:
-    if df is None or df.empty or not values: return pd.DataFrame()
+    if df is None or df.empty or not values: 
+        return pd.DataFrame()
+    
     # keep only chosen dims that actually exist
     rows = [r for r in rows if r in df.columns]
     cols = [c for c in cols if c in df.columns]
+    
+    # Check if we have at least one grouping dimension (rows or columns)
+    if not rows and not cols:
+        st.warning("⚠️ Pivot table requires at least one row or column dimension.")
+        return pd.DataFrame()
+    
     pieces = []
+    
     # Count
     if "Count" in values and "Count" in df.columns:
-        p_cnt = pd.pivot_table(df, index=rows or None, columns=cols or None, values="Count",
-                               aggfunc=agg_count, margins=margins, margins_name="Total",
-                               dropna=False, fill_value=0)
+        # Handle case where rows or cols might be empty
+        index_param = rows or None
+        columns_param = cols or None
+        
+        p_cnt = pd.pivot_table(df, 
+                              index=index_param, 
+                              columns=columns_param, 
+                              values="Count",
+                              aggfunc=agg_count, 
+                              margins=margins, 
+                              margins_name="Total",
+                              dropna=False, 
+                              fill_value=0)
         pieces.append(("Count", p_cnt))
+    
     # Percent
     if "Percent" in values and "Percent" in df.columns:
         if percent_mode.startswith("Weighted"):
             df2 = df.copy()
             df2["__pct_num"] = df2["Percent"] * df2["Count"] / 100.0
-            num = pd.pivot_table(df2, index=rows or None, columns=cols or None, values="__pct_num",
-                                 aggfunc="sum", margins=margins, margins_name="Total",
-                                 dropna=False, fill_value=0)
-            den = pd.pivot_table(df2, index=rows or None, columns=cols or None, values="Count",
-                                 aggfunc="sum", margins=margins, margins_name="Total",
-                                 dropna=False, fill_value=0)
+            
+            index_param = rows or None
+            columns_param = cols or None
+            
+            num = pd.pivot_table(df2, 
+                                index=index_param, 
+                                columns=columns_param, 
+                                values="__pct_num",
+                                aggfunc="sum", 
+                                margins=margins, 
+                                margins_name="Total",
+                                dropna=False, 
+                                fill_value=0)
+            den = pd.pivot_table(df2, 
+                                index=index_param, 
+                                columns=columns_param, 
+                                values="Count",
+                                aggfunc="sum", 
+                                margins=margins, 
+                                margins_name="Total",
+                                dropna=False, 
+                                fill_value=0)
             with np.errstate(divide='ignore', invalid='ignore'):
                 p_pct = (num / den) * 100.0
                 p_pct = p_pct.fillna(0)
         else:
-            p_pct = pd.pivot_table(df, index=rows or None, columns=cols or None, values="Percent",
-                                   aggfunc="mean", margins=margins, margins_name="Total",
-                                   dropna=False, fill_value=0)
+            index_param = rows or None
+            columns_param = cols or None
+            
+            p_pct = pd.pivot_table(df, 
+                                  index=index_param, 
+                                  columns=columns_param, 
+                                  values="Percent",
+                                  aggfunc="mean", 
+                                  margins=margins, 
+                                  margins_name="Total",
+                                  dropna=False, 
+                                  fill_value=0)
         pieces.append(("Percent", p_pct))
 
-    if not pieces: return pd.DataFrame()
+    if not pieces: 
+        return pd.DataFrame()
 
     # Combine pieces
     if len(pieces) == 1:
@@ -395,10 +441,12 @@ def build_pivot_table(df: pd.DataFrame,
 
     # Reset index for a flat CSV-friendly table
     pivot = pivot.reset_index() if rows else pivot.reset_index(drop=False)
+    
     # Round percents to 1 decimal if present
     for col in pivot.columns:
         if isinstance(col, str) and ("Percent" in col or col == "Percent"):
             pivot[col] = pivot[col].astype(float).round(1)
+    
     return pivot
 
 def main():
