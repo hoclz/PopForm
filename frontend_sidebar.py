@@ -80,17 +80,6 @@ def render_sidebar_controls(
                     mx = st.number_input(f"Max {i} (1–18)", 1, 18, d_max, key=f"mx{i}")
                     if mn <= mx:
                         custom_ranges.append((int(mn), int(mx)))
-        
-        # Documentation about the 18 CPC Age Groups
-        st.subheader("About the 18 CPC Age Groups")
-        st.markdown("""
-The **County Population by Characteristics (CPC)** files publish 5-year age buckets for county-level estimates, aligned to
-federal dissemination standards and disclosure avoidance. The **18 groups** used in this app are:  
-**0–4, 5–9, 10–14, 15–19, 20–24, 25–29, 30–34, 35–39, 40–44, 45–49, 50–54, 55–59, 60–64, 65–69, 70–74, 75–79, 80–84, 80+**.  
-They harmonize vintage-to-vintage files, keep cells large enough to protect privacy, and match common analytic use cases 
-(e.g., dependency ratios, school-age/prime-age/older cohorts). When you pick **18-Bracket** in the app, we aggregate to this
-canonical set for comparability across years and regions.
-        """)
 
     # Group Results By
     with sb.expander("📈 Group Results By", expanded=False):
