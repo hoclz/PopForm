@@ -7,32 +7,25 @@ import zipfile
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
-# ---------------- Page setup
+# ------------- Page setup
 st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
-# ---------------- External modules (robust import + fallbacks)
+# ------------- External modules (already in your repo)
 try:
     import backend_main_processing
     import frontend_data_loader
     import frontend_bracket_utils
-    import frontend_sidebar as fs
+    from frontend_sidebar import (
+        render_sidebar_controls,
+        display_census_links,
+        DATASET_URLS_FOR_VINTAGE,
+        RELEASE_STRIP_ITEMS,
+    )
 except Exception as e:
     st.error(f"Import error: {e}")
     st.stop()
 
-# Bind functions from sidebar module
-render_sidebar_controls = fs.render_sidebar_controls
-display_census_links = fs.display_census_links
-
-# Safe fallbacks for constants (prevents hard import failures)
-DATASET_URLS_FOR_VINTAGE = getattr(fs, "DATASET_URLS_FOR_VINTAGE", {})
-RELEASE_STRIP_ITEMS = getattr(
-    fs,
-    "RELEASE_STRIP_ITEMS",
-    [(y, "County Population by Characteristics — release") for y in range(2000, 2025)]
-)
-
-# ---------------- Paths
+# ------------- Constants & Data
 DATA_FOLDER = "./data"
 FORM_CONTROL_PATH = "./form_control_UI_data.csv"
 
@@ -70,24 +63,33 @@ CODE_TO_BRACKET = {
 # =========================================================
 st.markdown("""
 <style>
+/* ---------------- Core palette ----------------- */
 :root {
   --deep-blue: #0d47a1;
   --blue: #1976d2;
   --ink: #1a365d;
+  --slate: #4a5568;
+  --sky-50: #e3f2fd;
+  --sky-100: #bbdefb;
+  --sky-200: #90caf9;
 }
 
-/* ---------------- Eye header ---------------- */
-.hero-wrap { position: relative; text-align: center; padding-top: 8px; margin: 0 0 8px 0; }
-.eye-svg  { width: min(1200px,96%); display:block; margin:0 auto; }
+/* ----------------- Eye Header ------------------ */
+.hero-wrap {
+  position: relative; text-align: center; padding-top: 8px; margin: 0 0 8px 0;
+}
+.eye-svg {
+  width: min(1200px, 96%); display: block; margin: 0 auto;
+}
 .eye-title {
   font-size: 3rem; font-weight: 800; line-height: 1.1;
   background: linear-gradient(135deg, var(--deep-blue), var(--blue));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  margin: .15rem 0 .15rem;
+  margin: 0.15rem 0 0.15rem;
 }
-.eye-sub { font-size:1.05rem; color:#5b6b7d; font-style: italic; margin:.1rem 0 .25rem 0; }
-
-/* eyebrows + glow */
+.eye-sub {
+  font-size:1.05rem; color:#5b6b7d; font-style: italic; margin: 0.1rem 0 0.25rem 0;
+}
 .eye-glow {
   position:absolute; inset:0; pointer-events:none;
   background:
@@ -95,6 +97,7 @@ st.markdown("""
     radial-gradient(40rem 9rem at 88% 8%, rgba(255,243,205,0.28), transparent 60%);
   mix-blend-mode:multiply;
 }
+/* Eyebrows (subtle, above the upper lid) */
 .brow {
   position:absolute; left:50%; transform:translateX(-50%);
   top: -14px; width:min(1200px,96%); height:30px; pointer-events:none;
@@ -103,7 +106,8 @@ st.markdown("""
     radial-gradient(110% 140% at 85% 80%, rgba(140,110,60,.25), transparent 70%);
   filter: blur(0.5px);
 }
-/* blink */
+
+/* Blinking lid (quick flash) */
 .blink-lid {
   position:absolute; left:50%; transform:translateX(-50%);
   top: 22px; width:min(1200px,96%); height:0px; background: rgba(255,255,255,0.85);
@@ -116,7 +120,7 @@ st.markdown("""
   98% { height: 0px; opacity: 0; }
 }
 
-/* KPI */
+/* KPI cards + brick */
 .metric-card {
   background: linear-gradient(135deg,#e3f2fd,#bbdefb);
   padding:1rem;border-radius: 15px;
@@ -139,52 +143,133 @@ st.markdown("""
 .kpi-brick::before { top: 32px; }
 .kpi-brick::after  { bottom: 32px; }
 
-/* Release strip */
+/* ----------------- Release strip ---------------- */
+.release-wrap {
+  display:flex; align-items:center; justify-content:center; gap:.5rem;
+  margin: .25rem auto .25rem;
+}
 .release-strip {
   --speed: 28s;
-  position:relative; overflow:hidden; width:min(1100px,94%); white-space:nowrap;
+  position:relative; overflow:hidden;
+  width:min(1100px,94%); white-space:nowrap;
   border-radius: 10px; border:1px solid #e5e7eb; background:#fffdf7;
-  box-shadow: 0 2px 5px rgba(0,0,0,.05) inset; margin:.25rem auto .25rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,.05) inset;
 }
-.strip-track { display:inline-flex; align-items:center; gap:2rem; padding:.35rem .75rem; animation: scroll var(--speed) linear infinite; }
+.strip-track {
+  display:inline-flex; align-items:center; gap:2rem; padding:.35rem .75rem;
+  animation: scroll var(--speed) linear infinite;
+}
 .strip-item { color:#374151; font-size:.92rem; }
 .strip-item b { color:#0d47a1; }
-@keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
 
-/* Lamps + dark */
-.dark-overlay { position:fixed; inset:0; pointer-events:none; background: rgba(0,0,0,var(--darkness, 0.35)); transition: background .25s ease; z-index: 2; }
-.lamp { position: fixed; width: 12px; height: 12px; z-index: 3; pointer-events:none; border-radius: 50%; background: #444; box-shadow: 0 0 0 2px rgba(0,0,0,.15); }
-.lamp.on { background: #fffde7; box-shadow: 0 0 10px rgba(255,240,170,.9), 0 0 28px rgba(255,240,170,.8), 0 0 60px rgba(255,230,120,.75); }
-.lamp-glow { position:fixed; pointer-events:none; z-index:2; width: 55vw; height: 55vh; border-radius: 50%; filter: blur(18px); opacity: .0;
-  background: radial-gradient(circle, rgba(255,243,205,.85) 0%, rgba(255,230,130,.55) 28%, rgba(255,230,130,.28) 52%, rgba(255,230,130,.05) 80%, transparent 90%); animation: pulse 8s ease-in-out infinite; }
+/* ----------------- Lamps & dark overlay ---------------- */
+.dark-overlay {
+  position:fixed; inset:0; pointer-events:none;
+  background: rgba(0,0,0,var(--darkness, 0.35));
+  transition: background .25s ease;
+  z-index: 2;
+}
+.lamp {
+  position: fixed; width: 12px; height: 12px; z-index: 3; pointer-events:none;
+  border-radius: 50%; background: #444;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.15);
+}
+.lamp.on {
+  background: #fffde7;
+  box-shadow:
+    0 0 10px rgba(255, 240, 170, .9),
+    0 0 28px rgba(255, 240, 170, .8),
+    0 0 60px rgba(255, 230, 120, .75);
+}
+.lamp-glow {
+  position:fixed; pointer-events:none; z-index:2;
+  width: 55vw; height: 55vh; border-radius: 50%;
+  filter: blur(18px); opacity: .0;
+  background: radial-gradient(circle, rgba(255,243,205,.85) 0%, rgba(255,230,130,.55) 28%, rgba(255,230,130,.28) 52%, rgba(255,230,130,.05) 80%, transparent 90%);
+  animation: pulse 8s ease-in-out infinite;
+}
 .lamp-glow.on { opacity: .9; }
-@keyframes pulse { 0%,100% { transform: scale(1); filter: blur(15px); } 50% { transform: scale(1.05); filter: blur(21px); } }
-.lamp-left { top: 6px; left: 12px; } .lamp-right { top: 6px; right: 12px; }
-.glow-left { top: -8vh; left: -10vw; } .glow-right { top: -8vh; right: -10vw; }
+@keyframes pulse {
+  0%,100% { transform: scale(1); filter: blur(15px); }
+  50% { transform: scale(1.05); filter: blur(21px); }
+}
 
-/* Sidebar sizing/locking */
+/* Positions for lamps */
+.lamp-left { top: 6px; left: 12px; }
+.lamp-right { top: 6px; right: 12px; }
+.glow-left { top: -8vh; left: -10vw; }
+.glow-right { top: -8vh; right: -10vw; }
+
+/* ---------------- Sidebar resize & lock ---------------- */
 :root { --sb-width: 280px; }
-[data-testid="stSidebar"] > div:first-child { width: var(--sb-width) !important; min-width: var(--sb-width) !important; max-width: var(--sb-width) !important; }
-.sb-resizable [data-testid="stSidebar"] > div:first-child { resize: horizontal; overflow: auto; box-shadow: inset 0 0 0 1px rgba(25,118,210,.25); }
-.sb-locked  [data-testid="stSidebar"] > div:first-child { resize: none !important; overflow: hidden !important; }
+[data-testid="stSidebar"] > div:first-child {
+  width: var(--sb-width) !important;
+  min-width: var(--sb-width) !important;
+  max-width: var(--sb-width) !important;
+}
+.sb-resizable [data-testid="stSidebar"] > div:first-child {
+  resize: horizontal; overflow: auto; 
+  box-shadow: inset 0 0 0 1px rgba(25,118,210,.25);
+}
+.sb-locked  [data-testid="stSidebar"] > div:first-child {
+  resize: none !important; overflow: hidden !important;
+}
+
+/* Fix content shift when resizing */
+.main { transition: margin-left .1s ease; }
+
+/* Tidy checkboxes beside speed slider */
+.inline-controls { display:flex; align-items:center; gap:.5rem; justify-content:center; }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# -------- Header + strip + lamps helper functions --------
+# ----------------- Header Eye + Strip --------------------
 # =========================================================
 def render_header_with_eye(show_strip: bool, speed_seconds: float) -> None:
+    """Top eye header + release strip (centered)."""
+    # release strip controls row
+    with st.container():
+        c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 5, 1.2, 1.2], gap="small")
+        with c2:
+            # Left spacer
+            pass
+        with c3:
+            # inline controls, top center
+            st.markdown(
+                f"""
+                <div class="release-wrap">
+                  <div class="inline-controls">
+                    <span><input type="checkbox" id="showstrip" {'checked' if show_strip else ''} disabled></span>
+                    <label for="showstrip"><b>Show release strip</b></label>
+                    <span>• speed: <b>{int(speed_seconds)}s</b></span>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        with c4:
+            pass
+
     st.markdown(
         """
         <div class="hero-wrap">
           <div class="eye-glow"></div>
           <div class="brow"></div>
           <svg class="eye-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+            <!-- Upper eyelid -->
             <path d="M10,20 Q600,-170 1190,20" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
           </svg>
+
           <div class="eye-title">Illinois Population Data</div>
           <div class="eye-sub">Analyze demographic trends across Illinois counties from 2000–2024</div>
+
           <svg class="eye-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+            <!-- Lower eyelid -->
             <path d="M10,190 Q600,370 1190,190" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
           </svg>
           <div class="blink-lid"></div>
@@ -192,25 +277,42 @@ def render_header_with_eye(show_strip: bool, speed_seconds: float) -> None:
         """,
         unsafe_allow_html=True
     )
+
+    # Release strip (duplicated content for seamless scroll)
     if show_strip:
         items = " • ".join([f"<span class='strip-item'><b>{y}</b>: {txt}</span>" for (y, txt) in RELEASE_STRIP_ITEMS])
-        st.markdown(
-            f"""<div class="release-strip" style="--speed: {float(speed_seconds)}s">
-                   <div class="strip-track">{items} • {items}</div>
-                </div>""",
-            unsafe_allow_html=True
-        )
+        html = f"""
+        <div class="release-strip" style="--speed: {float(speed_seconds)}s">
+          <div class="strip-track">{items} • {items}</div>
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
 
+# =========================================================
+# ----------------- Lamps + Dark overlay ------------------
+# =========================================================
 def render_lighting(lamp_left_on: bool, lamp_right_on: bool, intensity: float, pulse_speed: int, dark_enabled: bool):
+    """
+    Renders the two lamps & big glowing blobs plus a dark overlay.
+    intensity ∈ [0,1] controls overlay darkness + glow alpha.
+    pulse_speed: 4..14 seconds.
+    """
     darkness = 0.55 if dark_enabled else 0.0
     darkness = min(max(darkness * (0.65 + 0.35 * (1.0 - intensity)), 0.0), 0.85)
+
     st.markdown(
         f"""
         <div class="dark-overlay" style="--darkness:{darkness};"></div>
+
         <div class="lamp lamp-left {'on' if lamp_left_on else ''}"></div>
         <div class="lamp lamp-right {'on' if lamp_right_on else ''}"></div>
-        <div class="lamp-glow glow-left {'on' if lamp_left_on else ''}" style="animation-duration:{pulse_speed}s; opacity:{0.85*intensity if lamp_left_on else 0};"></div>
-        <div class="lamp-glow glow-right {'on' if lamp_right_on else ''}" style="animation-duration:{pulse_speed}s; opacity:{0.85*intensity if lamp_right_on else 0};"></div>
+
+        <div class="lamp-glow glow-left {'on' if lamp_left_on else ''}"
+            style="animation-duration:{pulse_speed}s; opacity:{0.85*intensity if lamp_left_on else 0};">
+        </div>
+        <div class="lamp-glow glow-right {'on' if lamp_right_on else ''}"
+            style="animation-duration:{pulse_speed}s; opacity:{0.85*intensity if lamp_right_on else 0};">
+        </div>
         """,
         unsafe_allow_html=True
     )
@@ -272,6 +374,7 @@ def _code_to_region(code: Optional[int]) -> Optional[str]:
         c = int(code)
     except Exception:
         return None
+    # precedence
     if c in COOK_SET:   return "Cook County"
     if c in COLLAR_SET: return "Collar Counties"
     if c in URBAN_SET:  return "Urban Counties"
@@ -301,9 +404,10 @@ def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_bac
             mn_i, mx_i = max(1,int(mn)), min(18,int(mx))
             if mn_i > mx_i:
                 continue
+            codes = list(range(mn_i, mx_i+1))
+            label = combine_codes_to_label(codes)
             mask = df['Age'].between(mn_i, mx_i)
-            df.loc[mask, 'AgeGroup'] = combine_codes_to_label(list(range(mn_i, mx_i+1)))
-            covered |= mask.to_numpy()
+            df.loc[mask, 'AgeGroup'] = label; covered |= mask.to_numpy()
         if (~covered).any():
             df.loc[~covered, 'AgeGroup'] = "Other Ages"
         return df
@@ -348,7 +452,8 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
     if len(grouping_vars_clean) == 0:
         out = pd.DataFrame({"Count":[int(total_population)], "Percent":[100.0], "Year":[str(year_str)]})
         out.insert(0, "County", county_label)
-        return ensure_county_names(out, counties_map)
+        out = ensure_county_names(out, counties_map)
+        return out
 
     include_age = "Age" in grouping_vars_clean
     df = attach_agegroup_column(df_source, include_age, agegroup_for_backend, custom_ranges, agegroup_map_implicit)
@@ -356,14 +461,20 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 
     group_fields = []
     for gv in grouping_vars_clean:
-        if gv == "Age": group_fields.append("AgeGroup")
-        elif gv == "County": group_fields.append("County")
-        elif gv == "Region": group_fields.append("Region")
-        else: group_fields.append(gv)
+        if gv == "Age":
+            group_fields.append("AgeGroup")
+        elif gv == "County":
+            group_fields.append("County")
+        elif gv == "Region":
+            group_fields.append("Region")
+        else:
+            group_fields.append(gv)
 
     grouped = df.groupby(group_fields, dropna=False)["Count"].sum().reset_index()
+
     if "Race" in grouped.columns:
         grouped["Race"] = grouped["Race"].map({v:k for k,v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
+
     grouped["Year"] = str(year_str)
 
     if "County" in grouped.columns:
@@ -371,9 +482,12 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         grouped = ensure_county_names(grouped, counties_map)
 
     denom_keys = ["Year"]
-    if "County Code" in grouped.columns and "County" in grouping_vars_clean: denom_keys.append("County Code")
-    if "Region" in grouped.columns and "Region" in grouping_vars_clean: denom_keys.append("Region")
-    if "AgeGroup" in grouped.columns and "Age" in grouping_vars_clean: denom_keys.append("AgeGroup")
+    if "County Code" in grouped.columns and "County" in grouping_vars_clean:
+        denom_keys.append("County Code")
+    if "Region" in grouped.columns and "Region" in grouping_vars_clean:
+        denom_keys.append("Region")
+    if "AgeGroup" in grouped.columns and "Age" in grouping_vars_clean:
+        denom_keys.append("AgeGroup")
 
     if denom_keys:
         den = grouped.groupby(denom_keys, dropna=False)["Count"].transform("sum")
@@ -402,42 +516,61 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
     return grouped[col_order]
 
 # ──────────────────────────────────────────────────────────────
-# ConcatenatedKey
+# ConcatenatedKey (dynamic; underscore delimiter)
 # ──────────────────────────────────────────────────────────────
 def _normalize_token(x: object) -> str:
-    import re as _re
     s = str(x).strip()
     s = s.replace("–", "-").replace("—", "-")
-    s = _re.sub(r"\s+", "_", s)
-    s = _re.sub(r"[^0-9A-Za-z_\-]+", "", s)
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^0-9A-Za-z_\-]+", "", s)
     return s
 
-def add_concatenated_key_dynamic(df: pd.DataFrame, selected_filters: Dict[str, object], delimiter: str = "_") -> pd.DataFrame:
-    if df is None or df.empty: return df
+def add_concatenated_key_dynamic(
+    df: pd.DataFrame,
+    selected_filters: Dict[str, object],
+    delimiter: str = "_"
+) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
     group_by = selected_filters.get("group_by", []) or []
     cols_present = set(df.columns)
     key_cols: List[str] = []
-    if {"County Code", "County Name"}.issubset(cols_present): key_cols += ["County Code", "County Name"]
-    elif "County" in cols_present: key_cols += ["County"]
-    map_ui_to_col = {"Age": "AgeGroup", "Race": "Race", "Ethnicity": "Ethnicity", "Sex": "Sex", "County": "County Code", "Region": "Region"}
+    if {"County Code", "County Name"}.issubset(cols_present):
+        key_cols += ["County Code", "County Name"]
+    elif "County" in cols_present:
+        key_cols += ["County"]
+    map_ui_to_col = {
+        "Age": "AgeGroup",
+        "Race": "Race",
+        "Ethnicity": "Ethnicity",
+        "Sex": "Sex",
+        "County": "County Code",
+        "Region": "Region",
+    }
     for g in group_by:
         col = map_ui_to_col.get(g, g)
         if col in cols_present and col not in key_cols and col not in {"County Code","County Name","County"}:
             key_cols.append(col)
-    if "Year" in cols_present: key_cols.append("Year")
+    if "Year" in cols_present:
+        key_cols.append("Year")
     out = df.copy()
     for c in key_cols:
         if c in out.columns:
             if pd.api.types.is_numeric_dtype(out[c]):
-                try: out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64").astype(str)
-                except Exception: out[c] = out[c].astype(str)
-            else: out[c] = out[c].astype(str)
+                try:
+                    out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64").astype(str)
+                except Exception:
+                    out[c] = out[c].astype(str)
+            else:
+                out[c] = out[c].astype(str)
     if key_cols:
         out["ConcatenatedKey"] = out[key_cols].apply(lambda r: delimiter.join(_normalize_token(v) for v in r), axis=1)
     else:
         out["ConcatenatedKey"] = ""
     prefix_tokens: List[str] = []
-    for sel_key, col_name, label_prefix in [("race", "Race", ""), ("ethnicity", "Ethnicity", ""), ("sex", "Sex", ""), ("region", "Region", "Region_")]:
+    for sel_key, col_name, label_prefix in [
+        ("race", "Race", ""), ("ethnicity", "Ethnicity", ""), ("sex", "Sex", ""), ("region", "Region", "Region_")
+    ]:
         if col_name not in cols_present:
             val = selected_filters.get(sel_key)
             if val and str(val).strip().lower() not in {"all", "none"}:
@@ -449,17 +582,23 @@ def add_concatenated_key_dynamic(df: pd.DataFrame, selected_filters: Dict[str, o
     return out
 
 # =========================================================
-# --------------- Download: source ZIP --------------------
+# --------------- Download: source files ZIP --------------
 # =========================================================
 def build_source_zip_for_years(years: List[int]) -> Optional[bytes]:
+    """
+    Attempts to fetch the official Census files for selected 'years' and return a ZIP (bytes).
+    If outbound internet is blocked, returns None and the UI will show a note.
+    """
     try:
         import requests
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
             for y in years:
                 url = DATASET_URLS_FOR_VINTAGE.get(int(y))
-                if not url: continue
-                r = requests.get(url, timeout=30); r.raise_for_status()
+                if not url:
+                    continue
+                r = requests.get(url, timeout=30)
+                r.raise_for_status()
                 fname = url.split("/")[-1]
                 zf.writestr(fname, r.content)
         buf.seek(0)
@@ -468,60 +607,102 @@ def build_source_zip_for_years(years: List[int]) -> Optional[bytes]:
         return None
 
 # =========================================================
-# ---------------- Pivot (Preview & export) ---------------
+# --------------- Pivot (Preview & export) ----------------
 # =========================================================
 def make_pivot_preview(df: pd.DataFrame, cfg: Dict[str, object]) -> pd.DataFrame:
-    if df.empty or not cfg.get("enable_pivot"): return pd.DataFrame()
+    """
+    Creates a pivot preview based on sidebar settings.
+    If 'append_rows' is True and multiple 'pivot_rows' are provided, we pivot once per row-dimension and append.
+    Always adds 'ConcatenatedKey'.
+    """
+    if df.empty or not cfg.get("enable_pivot"):
+        return pd.DataFrame()
+
     value_col = cfg.get("pivot_values", "Count")
     cols = cfg.get("pivot_cols")
-    rows = [r for r in (cfg.get("pivot_rows", []) or []) if r in df.columns]
+    rows = cfg.get("pivot_rows", [])
     append_rows = bool(cfg.get("pivot_append_rows"))
+    keep_percent = (value_col == "Percent")
+
+    # columns present safeguard
+    avail_cols = set(df.columns)
+    rows = [r for r in rows if r in avail_cols]
+    if cols not in avail_cols:
+        cols = None
 
     out_frames: List[pd.DataFrame] = []
     row_sets = [[r] for r in rows] if append_rows and len(rows) > 1 else [rows]
 
     for row_list in row_sets:
-        if not row_list: continue
-        pv = pd.pivot_table(
-            df, index=row_list, columns=[cols] if cols in df.columns else None,
-            values=value_col, aggfunc=np.sum, fill_value=0, dropna=False
-        ).reset_index()
-        pv.columns = [str(c) if not isinstance(c, tuple) else "_".join([str(x) for x in c if x]) for c in pv.columns]
-        temp = add_concatenated_key_dynamic(pv.copy(), {"group_by": row_list + ([cols] if cols else []) + (["Year"] if "Year" in pv.columns else [])}, delimiter="_")
-        out_frames.append(temp)
+        if not row_list:
+            continue
+        try:
+            pv = pd.pivot_table(
+                df,
+                index=row_list,
+                columns=[cols] if cols else None,
+                values=value_col,
+                aggfunc=np.sum,
+                fill_value=0,
+                dropna=False,
+            )
+            pv = pv.reset_index()
+            # flatten multi-index columns
+            pv.columns = [str(c) if not isinstance(c, tuple) else "_".join([str(x) for x in c if x]) for c in pv.columns]
+            # add ConcatenatedKey from these columns + Year if present
+            temp = pv.copy()
+            sf = {
+                "group_by": row_list + ([cols] if cols else []) + (["Year"] if "Year" in temp.columns else []),
+                "race": None, "ethnicity": None, "sex": None, "region": None
+            }
+            temp = add_concatenated_key_dynamic(temp, sf, delimiter="_")
+            # ensure Count is int-ish when used
+            if not keep_percent and value_col in temp.columns:
+                try:
+                    temp[value_col] = temp[value_col].astype(int)
+                except Exception:
+                    pass
+            out_frames.append(temp)
+        except Exception:
+            continue
 
     return pd.concat(out_frames, ignore_index=True) if out_frames else pd.DataFrame()
+
 
 # =========================================================
 # ------------------------------ MAIN ---------------------
 # =========================================================
 def main():
+    # Load form controls
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
-     agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
+     agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(
+        FORM_CONTROL_PATH
+    )
 
-    choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
+    # Sidebar
+    choices = render_sidebar_controls(
+        years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw
+    )
 
-    # Sidebar width / lock CSS
+    # Apply sidebar width / lock CSS
     sb_width = int(choices["sidebar_width_px"])
     sb_resize_on = choices["sidebar_resize_enabled"]
     sb_lock = choices["sidebar_lock_width"]
-    st.markdown(f"<style>:root {{ --sb-width: {sb_width}px; }}</style>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <style>
+        :root {{ --sb-width: {sb_width}px; }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
     body_class = "sb-resizable" if sb_resize_on else ""
-    if sb_lock: body_class += " sb-locked"
+    if sb_lock:
+        body_class += " sb-locked"
     st.markdown(f"<script>document.body.className = '{body_class.strip()}';</script>", unsafe_allow_html=True)
 
-    # Top-center controls (interactive): override sidebar values for this run
-    ctr1, ctr2, ctr3 = st.columns([1.2, 2.2, 1.2])
-    with ctr2:
-        a, b = st.columns([1, 1.4])
-        with a:
-            top_show = st.toggle("Show release strip", value=choices["show_release_strip"])
-        with b:
-            top_speed = st.slider("Speed (seconds per loop)", 14, 60, int(choices["release_speed"]))
-    choices["show_release_strip"] = top_show
-    choices["release_speed"] = top_speed
-
-    # Header + strip
+    # Header + release strip (center, calm speed)
     render_header_with_eye(choices["show_release_strip"], choices["release_speed"])
 
     # Lamps & dark overlay
@@ -548,7 +729,7 @@ def main():
     with c4:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
-    # Controls row
+    # Divider + buttons
     st.markdown("---")
     left_col, right_col = st.columns([3, 2])
     with left_col:
@@ -564,11 +745,11 @@ def main():
     with right_col:
         display_census_links()
 
-    # State
+    # --- State
     st.session_state.setdefault("report_df", pd.DataFrame())
     st.session_state.setdefault("selected_filters", {})
 
-    # Optional: source files ZIP
+    # --- Optional: source files ZIP from sidebar request
     if choices.get("download_years"):
         src_bytes = build_source_zip_for_years(choices["download_years"])
         if src_bytes:
@@ -580,9 +761,9 @@ def main():
                 use_container_width=True
             )
         else:
-            st.info("Source-file download not available in this environment. On a machine with internet, this will produce a ZIP of the selected vintages.")
+            st.info("Source-file download is unavailable in this environment. If running locally/cloud with internet, this button will provide a ZIP of the selected vintages.")
 
-    # Generate
+    # -------- Generate
     if go:
         if not choices["selected_years"]:
             st.warning("⚠️ Please select at least one year."); st.stop()
@@ -611,14 +792,14 @@ def main():
                 for year in choices["selected_years"]:
                     df_src = backend_main_processing.process_population_data(
                         data_folder=DATA_FOLDER,
-                        agegroup_map_explicit=None,  # not used here
+                        agegroup_map_explicit=agegroup_map_explicit,
                         counties_map=counties_map,
                         selected_years=[year],
                         selected_counties=county_list,
                         selected_race=choices["selected_race_code"],
                         selected_ethnicity=choices["selected_ethnicity"],
                         selected_sex=choices["selected_sex"],
-                        selected_region=choices["selected_region"],
+                        selected_region=choices["selected_region"],  # exact single-region filter or None
                         selected_agegroup=choices["agegroup_for_backend"],
                         custom_age_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                     )
@@ -653,6 +834,7 @@ def main():
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
 
+            # Add dynamic ConcatenatedKey
             if not st.session_state.report_df.empty:
                 st.session_state.report_df = add_concatenated_key_dynamic(
                     st.session_state.report_df, st.session_state.selected_filters, delimiter="_"
@@ -662,13 +844,13 @@ def main():
                     cols = ["ConcatenatedKey"] + [c for c in cols if c != "ConcatenatedKey"]
                     st.session_state.report_df = st.session_state.report_df[cols]
 
-    # Results / download
+    # -------- Results / download
     if not st.session_state.report_df.empty:
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
         st.dataframe(st.session_state.report_df, use_container_width=True)
 
-        # Pivot preview
+        # Pivot Preview (optional)
         pivot_df = make_pivot_preview(st.session_state.report_df, choices)
         if not pivot_df.empty:
             st.markdown("### 🔁 Pivot Preview")
