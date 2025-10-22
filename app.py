@@ -398,22 +398,50 @@ def build_pivot_table(df: pd.DataFrame,
     Build a pivot preview. If append_per_row_var=True and more than one row var is chosen,
     this creates one pivot per row variable and appends them (long format) with a column
     'PivotRowDim' to identify which row variable produced the block.
-    """
-    if df is None or df.empty or not values: return pd.DataFrame()
 
+    Robust against empty row/column selections by producing a one-row total.
+    """
+    if df is None or df.empty or not values: 
+        return pd.DataFrame()
+
+    # Keep only columns that exist
     rows = [r for r in rows if r in df.columns]
     cols = [c for c in cols if c in df.columns]
+    values = [v for v in values if v in {"Count","Percent"} and v in df.columns]
 
     def _single_pivot(use_rows: List[str]) -> pd.DataFrame:
+        # ── NEW: if there are no group keys at all, compute a single-row total safely ──
+        if not use_rows and not cols:
+            result = {}
+            if "Count" in values:
+                try:
+                    if hasattr(df["Count"], agg_count):
+                        result["Count"] = getattr(df["Count"], agg_count)()
+                    else:
+                        result["Count"] = df["Count"].sum()
+                except Exception:
+                    result["Count"] = df["Count"].sum()
+            if "Percent" in values:
+                if percent_mode.startswith("Weighted"):
+                    den = df["Count"].sum() if "Count" in df.columns else 0
+                    num = (df["Percent"] * df.get("Count", 0) / 100.0).sum() if den else 0
+                    result["Percent"] = round(float((num/den)*100.0), 1) if den else 0.0
+                else:
+                    try:
+                        result["Percent"] = round(float(df["Percent"].mean()), 1)
+                    except Exception:
+                        result["Percent"] = 0.0
+            return pd.DataFrame([result]) if result else pd.DataFrame()
+
         pieces = []
         # Count
-        if "Count" in values and "Count" in df.columns:
+        if "Count" in values:
             p_cnt = pd.pivot_table(df, index=use_rows or None, columns=cols or None, values="Count",
                                    aggfunc=agg_count, margins=margins, margins_name="Total",
                                    dropna=False, fill_value=0)
             pieces.append(("Count", p_cnt))
         # Percent
-        if "Percent" in values and "Percent" in df.columns:
+        if "Percent" in values:
             if percent_mode.startswith("Weighted"):
                 df2 = df.copy()
                 df2["__pct_num"] = df2["Percent"] * df2["Count"] / 100.0
@@ -435,13 +463,13 @@ def build_pivot_table(df: pd.DataFrame,
         if not pieces:
             return pd.DataFrame()
 
-        # combine
+        # combine Count/Percent panes
         if len(pieces) == 1:
             pivot = pieces[0][1]
         else:
             pivot = pd.concat({name: p for name, p in pieces}, axis=1)
 
-        # Sort rows if requested
+        # optional sort
         if sort_rows and use_rows:
             try:
                 if isinstance(pivot.columns, pd.MultiIndex) and ("Count" in pivot.columns.levels[0]):
@@ -452,11 +480,14 @@ def build_pivot_table(df: pd.DataFrame,
             except Exception:
                 pass
 
+        # flatten multiindex if requested
         if flatten and isinstance(pivot.columns, pd.MultiIndex):
             pivot.columns = [" | ".join([str(x) for x in tup if str(x) != ""]) for tup in pivot.columns.to_flat_index()]
 
-        pivot = pivot.reset_index() if use_rows else pivot.reset_index(drop=False)
+        # IMPORTANT: avoid stray "index" column when use_rows is empty
+        pivot = pivot.reset_index() if use_rows else pivot.reset_index(drop=True)
 
+        # round percents
         for col in pivot.columns:
             if isinstance(col, str) and ("Percent" in col or col == "Percent"):
                 try:
@@ -688,8 +719,11 @@ def main():
             "group_by": choices["grouping_vars"],
         }
 
+        # FIXED: ensure region name is used only when a real region is selected
         def _county_label_for_all():
-            return choices["selected_region"] or "All Counties" if "All" in choices["selected_counties"] else "Selected Counties"
+            if choices["selected_region"] and choices["selected_region"] != "None":
+                return choices["selected_region"]
+            return "All Counties" if "All" in choices["selected_counties"] else "Selected Counties"
 
         with st.spinner("🔄 Processing data…"):
             def build_block(county_list: List[str], county_label: str) -> pd.DataFrame:
