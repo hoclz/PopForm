@@ -1,60 +1,16 @@
-# app.py — Illinois Population Data Explorer (pivot/Arrow-safe)
 import streamlit as st
 import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
-from typing import List, Tuple, Dict, Optional, Any
+from typing import List, Tuple, Dict, Optional
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Page setup
-# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
-# External modules
-try:
-    import backend_main_processing
-    import frontend_data_loader
-    import frontend_bracket_utils
-    from frontend_sidebar import (
-        render_sidebar_controls,
-        display_census_links,
-    )
-except Exception as e:
-    st.error(f"Import error: {e}")
-    st.stop()
-
-DATA_FOLDER = "./data"
-FORM_CONTROL_PATH = "./form_control_UI_data.csv"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Region definitions (unique assignment precedence: Cook > Collar > Urban > Rural)
-# ──────────────────────────────────────────────────────────────────────────────
-COOK_SET   = {31}
-COLLAR_SET = {43, 89, 97, 125, 197}
-URBAN_SET  = {201,125,97,39,89,43,31,93,197,91,143,179,127,19,183,165,109,113,173}
-RURAL_SET  = {
-    1,3,5,7,9,11,13,15,17,21,23,25,27,29,33,35,37,41,45,47,49,51,53,55,57,59,61,63,65,67,
-    69,71,73,75,77,79,81,83,85,87,95,99,101,103,105,107,111,115,117,119,121,123,129,131,
-    133,135,137,139,141,145,147,149,151,153,155,157,159,161,163,167,169,171,175,177,181,
-    185,187,189,191,193,195,199,203
-}
-REGION_LABELS = ("Cook County", "Collar Counties", "Urban Counties", "Rural Counties")
-
-RACE_DISPLAY_TO_CODE = {
-    "Two or More Races":"TOM","American Indian and Alaska Native":"AIAN",
-    "Black or African American":"Black","White":"White",
-    "Native Hawaiian and Other Pacific Islander":"NHOPI","Asian":"Asian",
-}
-
-CODE_TO_BRACKET = {
-    1:"0-4",2:"5-9",3:"10-14",4:"15-19",5:"20-24",6:"25-29",7:"30-34",8:"35-39",9:"40-44",
-    10:"45-49",11:"50-54",12:"55-59",13:"60-64",14:"65-69",15:"70-74",16:"75-79",17:"80-84",18:"80+",
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Release ticker (2000–2024 CPC/ASRH releases; editable)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# CPC release dates ticker configuration (2000–2024)
+# ─────────────────────────────────────────────────────────────
 CPC_RELEASES: List[Tuple[int, str]] = [
     (2024, "Jun 23, 2025"),
     (2023, "Jun 27, 2024"),
@@ -83,34 +39,11 @@ CPC_RELEASES: List[Tuple[int, str]] = [
     (2000, "Jun 2001"),
 ]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Global CSS (ticker + eye header + lamps + sidebar width hook)
-# ──────────────────────────────────────────────────────────────────────────────
+# ====== Global CSS (ticker + header + KPI bricks) ======
 st.markdown("""
 <style>
-/* ===== Toggleable dark overlay + lamps (top-left / top-right) ===== */
-#global-lighting-overlay{
-  position: fixed; inset: 0; pointer-events: none; z-index: 9999;
-}
-#global-lighting-overlay .dim{
-  position:absolute; inset:0; background:rgba(0,0,0,0.45); transition:opacity .25s ease;
-}
-#global-lighting-overlay.light-off .dim{ opacity: 0; }
-#global-lighting-overlay .lamp{
-  position:absolute; top:-40px; width:48vw; height:48vh; filter: blur(1px);
-  background: radial-gradient(ellipse at center,
-              rgba(255,255,220,0.65) 0%,
-              rgba(255,250,200,0.45) 30%,
-              rgba(255,240,160,0.28) 55%,
-              rgba(255,240,160,0.0) 80%);
-  opacity:.0; transition: opacity .25s ease;
-}
-#global-lighting-overlay .lamp.on{ opacity: 1; }
-#global-lighting-overlay .lamp.left { left:-10vw; }
-#global-lighting-overlay .lamp.right{ right:-10vw; }
-
-/* ===== Release ticker ===== */
-.release-controls-row{display:flex;align-items:center;justify-content:center;gap:1rem;margin:.15rem 0 .4rem 0;}
+/* ===== Release Ticker (refined) ===== */
+.release-controls-row{display:flex;align-items:center;justify-content:center;gap:1rem;margin:.25rem 0 .4rem 0;}
 .release-ticker-wrap{position:relative;width:100%;overflow:hidden;background:linear-gradient(90deg,#0d47a1,#1565c0);border-bottom:1px solid rgba(255,255,255,.25);box-shadow:0 2px 6px rgba(13,71,161,.15);}
 .release-ticker-wrap::before,.release-ticker-wrap::after{content:"";position:absolute;top:0;bottom:0;width:80px;pointer-events:none;z-index:2;}
 .release-ticker-wrap::before{left:0;background:linear-gradient(90deg,rgba(13,71,161,1),rgba(13,71,161,0));}
@@ -122,55 +55,57 @@ st.markdown("""
 .release-bullet{color:#e3f2fd;opacity:.55;}
 .release-title-chip{display:inline-flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);padding:.15rem .55rem;border-radius:999px;font-weight:700;font-size:.9rem;}
 @keyframes ticker-marquee{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
-
-/* ===== "Eye" title (with eyebrows + soft flash) ===== */
-.eye-wrap{position:relative;text-align:center;padding: 6px 0 2px;margin: 0 0 8px 0;}
-.eye-svg{width:min(1200px,96%);height:120px;display:block;margin:0 auto;}
-.eye-title{
-  font-size:3rem;font-weight:900;line-height:1.1;margin:.2rem 0 .1rem;
-  background:linear-gradient(135deg,#0d47a1,#1976d2);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  text-shadow:0 0 0 transparent;
-}
-.eye-sub{font-size:1.1rem;color:#4a5568;text-align:center;margin-bottom:.5rem;font-style:italic;}
-/* eyelid flash (slow blink) */
-.eye-flash{
-  position:absolute; left:50%; transform:translateX(-50%);
-  top:12px; width:min(900px,82%); height:8px; border-radius:999px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.85),transparent);
-  filter:blur(1px); opacity:.0; animation:eyeFlash 5.8s ease-in-out infinite;
-}
-@keyframes eyeFlash{
-  0%{opacity:0;} 42%{opacity:0;}
-  45%{opacity:.9;} 55%{opacity:.0;}
-  100%{opacity:0;}
-}
-
-/* KPI cards + bricks */
+.main-header{font-size:3rem;background:linear-gradient(135deg,#0d47a1,#1976d2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:.25rem;font-weight:800;line-height:1.1;}
+.sub-title{font-size:1.1rem;color:#4a5568;text-align:center;margin-bottom:.5rem;font-weight:400;font-style:italic;}
+.hero-arch{position:relative;text-align:center;padding:6px 0 2px;margin:0 0 12px 0;}
+.arch-svg{width:min(1200px,96%);height:110px;display:block;margin:0 auto;}
+@media (max-width:700px){.arch-svg{height:80px}.release-item{font-size:.9rem}.release-seq{gap:1rem;padding:0 .8rem}}
 .metric-card{background:linear-gradient(135deg,#e3f2fd,#bbdefb);padding:1rem;border-radius:15px;box-shadow:0 4px 6px rgba(13,71,161,.1);margin-bottom:1rem;text-align:center;border:1px solid #90caf9;height:120px;display:flex;flex-direction:column;justify-content:center;}
-.metric-value{font-size:2.2rem;font-weight:700;color:#1a365d;margin-bottom:.3rem;line-height:1.2;}
+.metric-value{font-size:2.2rem;font-weight:700;color:#1a365d;margin-bottom:.3rem;line-height:1;}
 .metric-label{font-size:.85rem;color:#4a5568;font-weight:500;line-height:1.2;}
 .kpi-brick{width:15px;min-width:15px;height:120px;background:#bfbfbf;border-radius:4px;box-shadow:inset 0 0 0 1px #9e9e9e,0 1px 2px rgba(0,0,0,.08);margin:0 auto;position:relative;}
 .kpi-brick::before,.kpi-brick::after{content:"";position:absolute;left:3px;right:3px;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;}
 .kpi-brick::before{top:32px}.kpi-brick::after{bottom:32px}
-
-/* Sidebar width hook (set via inline style we inject) */
-section[data-testid="stSidebar"] { transition: width .2s ease; }
 </style>
 """, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Small UI helper for Streamlit versions without st.toggle
-# ──────────────────────────────────────────────────────────────────────────────
-def ui_toggle(label: str, key: str, value: bool = False, help: Optional[str] = None) -> bool:
-    try:
-        return st.toggle(label, value=value, key=key, help=help)
-    except Exception:
-        return st.checkbox(label, value=value, key=key, help=help)
+# External modules
+try:
+    import backend_main_processing
+    import frontend_data_loader
+    import frontend_bracket_utils
+    from frontend_sidebar import render_sidebar_controls, display_census_links
+except Exception as e:
+    st.error(f"Import error: {e}")
+    st.stop()
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Utils
-# ──────────────────────────────────────────────────────────────────────────────
+DATA_FOLDER = "./data"
+FORM_CONTROL_PATH = "./form_control_UI_data.csv"
+
+# ---- Region definitions (unique assignment with precedence: Cook > Collar > Urban > Rural)
+COOK_SET   = {31}
+COLLAR_SET = {43, 89, 97, 125, 197}
+URBAN_SET  = {201,125,97,39,89,43,31,93,197,91,143,179,127,19,183,165,109,113,173}
+RURAL_SET  = {
+    1,3,5,7,9,11,13,15,17,21,23,25,27,29,33,35,37,41,45,47,49,51,53,55,57,59,61,63,65,67,
+    69,71,73,75,77,79,81,83,85,87,95,99,101,103,105,107,111,115,117,119,121,123,129,131,
+    133,135,137,139,141,145,147,149,151,153,155,157,159,161,163,167,169,171,175,177,181,
+    185,187,189,191,193,195,199,203
+}
+REGION_LABELS = ("Cook County", "Collar Counties", "Urban Counties", "Rural Counties")
+
+RACE_DISPLAY_TO_CODE = {
+    "Two or More Races":"TOM","American Indian and Alaska Native":"AIAN",
+    "Black or African American":"Black","White":"White",
+    "Native Hawaiian and Other Pacific Islander":"NHOPI","Asian":"Asian",
+}
+RACE_CODE_TO_DISPLAY = {v:k for k, v in RACE_DISPLAY_TO_CODE.items()}
+
+CODE_TO_BRACKET = {
+    1:"0-4",2:"5-9",3:"10-14",4:"15-19",5:"20-24",6:"25-29",7:"30-34",8:"35-39",9:"40-44",
+    10:"45-49",11:"50-54",12:"55-59",13:"60-64",14:"65-69",15:"70-74",16:"75-79",17:"80-84",18:"80+",
+}
+
 def combine_codes_to_label(codes: List[int]) -> str:
     codes = sorted(set(int(c) for c in codes))
     if not codes: return ""
@@ -181,8 +116,8 @@ def combine_codes_to_label(codes: List[int]) -> str:
             a,b = s.split("-"); lows.append(int(a)); highs.append(int(b))
         elif s.endswith("+"):
             lows.append(int(s[:-1])); highs.append(999)
-    lo, hi = (min(lows), max(highs)) if lows else (None, None)
-    if lo is None: return "-".join(str(c) for c in codes)
+    if not lows: return "-".join(str(c) for c in codes)
+    lo, hi = min(lows), max(highs)
     return f"{lo}+" if hi >= 999 else f"{lo}-{hi}"
 
 def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.DataFrame:
@@ -266,25 +201,18 @@ def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_bac
         return df
     df['AgeGroup'] = "All Ages"; return df
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Aggregation & keys
-# ──────────────────────────────────────────────────────────────────────────────
 def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str: str,
                     county_label: str, counties_map: Dict[str,int], agegroup_for_backend: Optional[str],
                     custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
     grouping_vars_clean = [g for g in grouping_vars if g != "All"]
-
     def _empty():
         base = (["County"] if "County" not in grouping_vars_clean else [])
         cols = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
         return pd.DataFrame(columns=base + cols + ["Count", "Percent", "Year"])
-
-    if df_source is None or df_source.empty:
-        return _empty()
+    if df_source is None or df_source.empty: return _empty()
 
     total_population = df_source["Count"].sum()
-    if total_population == 0:
-        return _empty()
+    if total_population == 0: return _empty()
 
     if len(grouping_vars_clean) == 0:
         out = pd.DataFrame({"Count":[int(total_population)], "Percent":[100.0], "Year":[str(year_str)]})
@@ -305,10 +233,8 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 
     grouped = df.groupby(group_fields, dropna=False)["Count"].sum().reset_index()
 
-    # normalize race labels
     if "Race" in grouped.columns:
-        inv = {v:k for k,v in RACE_DISPLAY_TO_CODE.items()}
-        grouped["Race"] = grouped["Race"].map(inv).fillna(grouped["Race"])
+        grouped["Race"] = grouped["Race"].map({v:k for k,v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
 
     grouped["Year"] = str(year_str)
 
@@ -345,6 +271,9 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
         if c in existing and c not in col_order: col_order.append(c)
     return grouped[col_order]
 
+# ──────────────────────────────────────────────────────────────
+# Dynamic ConcatenatedKey (uses "_" delimiter)
+# ──────────────────────────────────────────────────────────────
 def _normalize_token(x: object) -> str:
     s = str(x).strip()
     s = s.replace("–", "-").replace("—", "-")
@@ -385,325 +314,160 @@ def add_concatenated_key_dynamic(df: pd.DataFrame, selected_filters: Dict[str, o
         out["ConcatenatedKey"] = prefix + ("_" if out["ConcatenatedKey"].ne("").any() else "") + out["ConcatenatedKey"]
     return out
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Pivot helpers  (Arrow-safe)
-# ──────────────────────────────────────────────────────────────────────────────
-def build_pivot_table(df: pd.DataFrame,
-                      rows: List[str], cols: List[str], values: List[str],
-                      agg_count: str = "sum",
-                      percent_mode: str = "Weighted by Count (rows)",
-                      margins: bool = True, flatten: bool = True,
-                      sort_rows: bool = False,
-                      append_per_row_var: bool = False) -> pd.DataFrame:
-    """
-    Build a pivot preview. Robust against empty row/column selections.
-    If append_per_row_var=True and >1 row var is chosen, builds one pivot per row var
-    and appends them with a 'PivotRowDim' column.
-    """
-    if df is None or df.empty or not values:
-        return pd.DataFrame()
-
-    # Keep only columns that exist
-    rows = [r for r in rows if r in df.columns]
-    cols = [c for c in cols if c in df.columns]
-    values = [v for v in values if v in {"Count","Percent"} and v in df.columns]
-
-    def _single_pivot(use_rows: List[str]) -> pd.DataFrame:
-        # If there are no group keys at all, compute a single-row total safely.
-        if not use_rows and not cols:
-            result: Dict[str, Any] = {}
-            if "Count" in values:
-                try:
-                    if hasattr(df["Count"], agg_count):
-                        result["Count"] = getattr(df["Count"], agg_count)()
-                    else:
-                        result["Count"] = df["Count"].sum()
-                except Exception:
-                    result["Count"] = df["Count"].sum()
-            if "Percent" in values:
-                if percent_mode.startswith("Weighted"):
-                    den = df["Count"].sum() if "Count" in df.columns else 0
-                    num = (df["Percent"] * df.get("Count", 0) / 100.0).sum() if den else 0
-                    result["Percent"] = round(float((num/den)*100.0), 1) if den else 0.0
-                else:
-                    try:
-                        result["Percent"] = round(float(df["Percent"].mean()), 1)
-                    except Exception:
-                        result["Percent"] = 0.0
-            return pd.DataFrame([result]) if result else pd.DataFrame()
-
-        pieces = []
-        # Count
-        if "Count" in values:
-            p_cnt = pd.pivot_table(df, index=use_rows or None, columns=cols or None, values="Count",
-                                   aggfunc=agg_count, margins=margins, margins_name="Total",
-                                   dropna=False, fill_value=0)
-            pieces.append(("Count", p_cnt))
-        # Percent
-        if "Percent" in values:
-            if percent_mode.startswith("Weighted"):
-                df2 = df.copy()
-                df2["__pct_num"] = df2["Percent"] * df2["Count"] / 100.0
-                num = pd.pivot_table(df2, index=use_rows or None, columns=cols or None, values="__pct_num",
-                                     aggfunc="sum", margins=margins, margins_name="Total",
-                                     dropna=False, fill_value=0)
-                den = pd.pivot_table(df2, index=use_rows or None, columns=cols or None, values="Count",
-                                     aggfunc="sum", margins=margins, margins_name="Total",
-                                     dropna=False, fill_value=0)
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    p_pct = (num / den) * 100.0
-                    p_pct = p_pct.fillna(0)
-            else:
-                p_pct = pd.pivot_table(df, index=use_rows or None, columns=cols or None, values="Percent",
-                                       aggfunc="mean", margins=margins, margins_name="Total",
-                                       dropna=False, fill_value=0)
-            pieces.append(("Percent", p_pct))
-
-        if not pieces:
-            return pd.DataFrame()
-
-        # combine Count/Percent panes
-        if len(pieces) == 1:
-            pivot = pieces[0][1]
-        else:
-            pivot = pd.concat({name: p for name, p in pieces}, axis=1)
-
-        # optional sort
-        if sort_rows and use_rows:
-            try:
-                if isinstance(pivot.columns, pd.MultiIndex) and ("Count" in pivot.columns.levels[0]):
-                    sort_key = pivot["Count"]
-                else:
-                    sort_key = pivot
-                pivot = pivot.sort_values(by=list(sort_key.columns), ascending=False)
-            except Exception:
-                pass
-
-        # flatten multiindex if requested
-        if flatten and isinstance(pivot.columns, pd.MultiIndex):
-            pivot.columns = [" | ".join([str(x) for x in tup if str(x) != ""]) for tup in pivot.columns.to_flat_index()]
-
-        # IMPORTANT: avoid stray "index" column when no row keys
-        pivot = pivot.reset_index() if use_rows else pivot.reset_index(drop=True)
-
-        # round percents
-        for col in pivot.columns:
-            if isinstance(col, str) and ("Percent" in col or col == "Percent"):
-                try:
-                    pivot[col] = pivot[col].astype(float).round(1)
-                except Exception:
-                    pass
-        return pivot
-
-    if append_per_row_var and len(rows) > 1:
-        blocks = []
-        for rv in rows:
-            pv = _single_pivot([rv])
-            if pv.empty: continue
-            pv.insert(0, "PivotRowDim", rv)
-            blocks.append(pv)
-        return pd.concat(blocks, ignore_index=True) if blocks else pd.DataFrame()
-    else:
-        return _single_pivot(rows)
-
-def add_concatenated_key_for_pivot(pivot_df: pd.DataFrame,
-                                   selected_filters: Dict[str, object],
-                                   rows_used: List[str]) -> pd.DataFrame:
-    if pivot_df is None or pivot_df.empty: return pivot_df
-    df = pivot_df.copy()
-    cols_present = set(df.columns)
-    key_cols: List[str] = []
-
-    if {"County Code","County Name"}.issubset(cols_present): key_cols += ["County Code","County Name"]
-    elif "County" in cols_present: key_cols += ["County"]
-
-    for r in rows_used:
-        if r in cols_present and r not in key_cols:
-            key_cols.append(r)
-    if "Year" in cols_present and "Year" not in key_cols:
-        key_cols.append("Year")
-
-    for c in key_cols:
-        if c in df.columns:
-            if pd.api.types.is_numeric_dtype(df[c]):
-                try: df[c] = pd.to_numeric(df[c], errors="coerce").astype("Int64").astype(str)
-                except Exception: df[c] = df[c].astype(str)
-            else: df[c] = df[c].astype(str)
-    if key_cols:
-        df["ConcatenatedKey"] = df[key_cols].apply(lambda r: "_".join(_normalize_token(x) for x in r), axis=1)
-    else:
-        df["ConcatenatedKey"] = ""
-    return df
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Arrow-safe sanitizer for st.dataframe
-# ──────────────────────────────────────────────────────────────────────────────
-def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
-    """Make a DataFrame safe for PyArrow conversion in Streamlit."""
-    if df is None or df.empty:
-        return df if df is not None else pd.DataFrame()
-
-    out = df.copy()
-
-    # 1) Ensure string, unique column names
-    cols = [str(c) for c in out.columns]
-    seen = {}
-    newcols = []
-    for c in cols:
-        base = c
-        k = 1
-        while c in seen:
-            k += 1
-            c = f"{base}.{k}"
-        seen[c] = True
-        newcols.append(c)
-    out.columns = newcols
-
-    # 2) Convert unsupported objects to strings
-    for col in out.columns:
-        s = out[col]
-        if pd.api.types.is_categorical_dtype(s):
-            out[col] = s.astype(str)
-            continue
-        if s.dtype == "object":
-            def _scalarize(x: Any) -> Any:
-                if x is None or (pd.isna(x) if not isinstance(x, str) else False):
-                    return None
-                if isinstance(x, (str, int, float, bool, np.integer, np.floating, np.bool_)):
-                    return x
-                # lists/tuples/dicts/arrays or anything exotic → stringify
-                return str(x)
-            out[col] = s.map(_scalarize)
-
-    return out
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Ticker + Eye + Lamps renderers
-# ──────────────────────────────────────────────────────────────────────────────
-def render_release_ticker(releases: List[Tuple[int, str]], speed_seconds: int = 135, show: bool = True):
-    if not show: return
+# ===== Ticker renderer =====
+def render_release_ticker(releases: List[Tuple[int, str]], speed_seconds: int = 135):
     rel_sorted = sorted(releases, key=lambda x: x[0], reverse=True)
-    items_html = "".join(
-        f"<span class='release-item'>Vintage {y}: {when}</span><span class='release-bullet'>•</span>"
-        for (y, when) in rel_sorted
-    )
+    items_html = "".join(f"<span class='release-item'>Vintage {y}: {when}</span><span class='release-bullet'>•</span>" for (y, when) in rel_sorted)
     html = f"""
     <div class="release-ticker-wrap" role="marquee" aria-label="County Population by Characteristics release dates">
         <div class="release-ticker-inner" style="--marquee-speed:{int(speed_seconds)}s;">
-            <div class="release-seq">
-              <span class='release-title-chip'>📅 County Population by Characteristics — Release Dates</span>
-              <span class='release-bullet'>•</span>{items_html}
+            <div class="release-seq"><span class='release-title-chip'>📅 County Population by Characteristics — Release Dates</span>
+                <span class='release-bullet'>•</span>{items_html}
             </div>
-            <div class="release-seq" aria-hidden="true">
-              <span class='release-title-chip'>📅 County Population by Characteristics — Release Dates</span>
-              <span class='release-bullet'>•</span>{items_html}
+            <div class="release-seq" aria-hidden="true"><span class='release-title-chip'>📅 County Population by Characteristics — Release Dates</span>
+                <span class='release-bullet'>•</span>{items_html}
             </div>
         </div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
 
-def render_eye_header():
+# ===== Pivot builder =====
+def build_pivot_table(df: pd.DataFrame,
+                      rows: List[str], cols: List[str], values: List[str],
+                      agg_count: str = "sum",
+                      percent_mode: str = "Weighted by Count (rows)",
+                      margins: bool = True, flatten: bool = True,
+                      sort_rows: bool = False) -> pd.DataFrame:
+    if df is None or df.empty or not values: return pd.DataFrame()
+    # keep only chosen dims that actually exist
+    rows = [r for r in rows if r in df.columns]
+    cols = [c for c in cols if c in df.columns]
+    pieces = []
+    # Count
+    if "Count" in values and "Count" in df.columns:
+        p_cnt = pd.pivot_table(df, index=rows or None, columns=cols or None, values="Count",
+                               aggfunc=agg_count, margins=margins, margins_name="Total",
+                               dropna=False, fill_value=0)
+        pieces.append(("Count", p_cnt))
+    # Percent
+    if "Percent" in values and "Percent" in df.columns:
+        if percent_mode.startswith("Weighted"):
+            df2 = df.copy()
+            df2["__pct_num"] = df2["Percent"] * df2["Count"] / 100.0
+            num = pd.pivot_table(df2, index=rows or None, columns=cols or None, values="__pct_num",
+                                 aggfunc="sum", margins=margins, margins_name="Total",
+                                 dropna=False, fill_value=0)
+            den = pd.pivot_table(df2, index=rows or None, columns=cols or None, values="Count",
+                                 aggfunc="sum", margins=margins, margins_name="Total",
+                                 dropna=False, fill_value=0)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                p_pct = (num / den) * 100.0
+                p_pct = p_pct.fillna(0)
+        else:
+            p_pct = pd.pivot_table(df, index=rows or None, columns=cols or None, values="Percent",
+                                   aggfunc="mean", margins=margins, margins_name="Total",
+                                   dropna=False, fill_value=0)
+        pieces.append(("Percent", p_pct))
+
+    if not pieces: return pd.DataFrame()
+
+    # Combine pieces
+    if len(pieces) == 1:
+        pivot = pieces[0][1]
+    else:
+        pivot = pd.concat({name: p for name, p in pieces}, axis=1)
+
+    # Optional sorting by grand total (Count preferred if present)
+    if sort_rows and rows:
+        try:
+            if isinstance(pivot.columns, pd.MultiIndex) and ("Count" in pivot.columns.levels[0]):
+                sort_key = pivot["Count"]
+            else:
+                sort_key = pivot
+            pivot = pivot.sort_values(by=list(sort_key.columns), ascending=False)
+        except Exception:
+            pass
+
+    # Flatten columns if requested
+    if flatten and isinstance(pivot.columns, pd.MultiIndex):
+        pivot.columns = [" | ".join([str(x) for x in tup if str(x) != ""]) for tup in pivot.columns.to_flat_index()]
+
+    # Reset index for a flat CSV-friendly table
+    pivot = pivot.reset_index() if rows else pivot.reset_index(drop=False)
+    # Round percents to 1 decimal if present
+    for col in pivot.columns:
+        if isinstance(col, str) and ("Percent" in col or col == "Percent"):
+            pivot[col] = pivot[col].astype(float).round(1)
+    return pivot
+
+def main():
+    # ===== Top-center ticker controls =====
+    st.session_state.setdefault("show_release_ticker", True)
+    st.session_state.setdefault("ticker_speed", 135)
+    _l, center, _r = st.columns([1, 3, 1])
+    with center:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            try:
+                st.session_state.show_release_ticker = st.toggle("Show Release Strip", value=st.session_state.show_release_ticker)
+            except Exception:
+                st.session_state.show_release_ticker = st.checkbox("Show Release Strip", value=st.session_state.show_release_ticker)
+        with c2:
+            st.session_state.ticker_speed = st.slider("Ticker speed (secs per loop)", 60, 200, int(st.session_state.ticker_speed), 5, help="Lower = faster • Higher = slower")
+    if st.session_state.show_release_ticker:
+        render_release_ticker(CPC_RELEASES, speed_seconds=st.session_state.ticker_speed)
+
+    # ===== Arched header =====
     st.markdown("""
-<div class="eye-wrap">
-  <svg class="eye-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
-    <!-- Eyebrows (upper & lower arcs) -->
+<div class="hero-arch">
+  <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
     <path d="M10,190 Q600,-150 1190,190" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
   </svg>
-  <div class="eye-flash"></div>
-  <div class="eye-title">Illinois Population Data</div>
-  <div class="eye-sub">Analyze demographic trends across Illinois counties from 2000–2024</div>
-  <svg class="eye-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+  <div class="main-header">Illinois Population Data</div>
+  <div class="sub-title">Analyze demographic trends across Illinois counties from 2000–2024</div>
+  <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
     <path d="M10,10 Q600,350 1190,10" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
   </svg>
 </div>
 """, unsafe_allow_html=True)
 
-def render_lighting_controls_and_overlay():
-    # Ensure defaults exist (do NOT assign widget results back)
-    if "dark_enabled" not in st.session_state: st.session_state["dark_enabled"] = True
-    if "lamp_left" not in st.session_state:   st.session_state["lamp_left"] = False
-    if "lamp_right" not in st.session_state:  st.session_state["lamp_right"] = False
-
-    _l, center, _r = st.columns([1, 3, 1])
-    with center:
-        c1, c2, c3 = st.columns([1, 1, 1])
-        with c1:
-            dark_enabled = ui_toggle(
-                "🌙 Dark Screen",
-                key="dark_enabled",
-                value=st.session_state["dark_enabled"],
-                help="Dim the screen to see lamp lighting better.",
-            )
-        with c2:
-            lamp_left = ui_toggle("💡 Left Lamp", key="lamp_left", value=st.session_state["lamp_left"])
-        with c3:
-            lamp_right = ui_toggle("💡 Right Lamp", key="lamp_right", value=st.session_state["lamp_right"])
-
-    # Overlay HTML (use local vars; widgets already updated session_state)
-    lamp_left_cls  = "lamp left on"  if lamp_left  else "lamp left"
-    lamp_right_cls = "lamp right on" if lamp_right else "lamp right"
-    wrapper_cls    = "" if dark_enabled else "light-off"
-    overlay_html = f"""
-<div id="global-lighting-overlay" class="{wrapper_cls}">
-  <div class="dim"></div>
-  <div class="{lamp_left_cls}"></div>
-  <div class="{lamp_right_cls}"></div>
-</div>
-"""
-    st.markdown(overlay_html, unsafe_allow_html=True)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# App main
-# ──────────────────────────────────────────────────────────────────────────────
-def main():
-    # Lighting controls + release ticker controls (top)
-    render_lighting_controls_and_overlay()
-
-    # Ticker controls: ensure defaults
-    if "show_release_ticker" not in st.session_state: st.session_state["show_release_ticker"] = True
-    if "ticker_speed" not in st.session_state:        st.session_state["ticker_speed"] = 135
-
-    _l, center, _r = st.columns([1, 3, 1])
-    with center:
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            ui_toggle("Show Release Strip", key="show_release_ticker", value=st.session_state["show_release_ticker"])
-        with c2:
-            st.slider(
-                "Ticker speed (secs per loop)",
-                60, 200, int(st.session_state["ticker_speed"]), 5,
-                key="ticker_speed",
-                help="Lower = faster • Higher = slower",
-            )
-
-    render_release_ticker(
-        CPC_RELEASES,
-        speed_seconds=st.session_state["ticker_speed"],
-        show=st.session_state["show_release_ticker"],
-    )
-
-    # Eye header
-    render_eye_header()
-
-    # Load lists for UI
+    # Load form controls
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
 
-    # Sidebar
-    choices = render_sidebar_controls(
-        years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw
-    )
+    # Sidebar (expects “Region” in Group Results By)
+    choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
-    # Sidebar width CSS (if enabled)
-    if choices["ui_sidebar_resizable"]:
-        width_px = int(choices["ui_sidebar_width"])
-        st.markdown(
-            f"<style>section[data-testid='stSidebar']{{width:{width_px}px; min-width:{width_px}px;}}</style>",
-            unsafe_allow_html=True,
-        )
-    if choices["ui_sidebar_resizable"] and choices["ui_sidebar_locked"]:
-        st.markdown("<style>section[data-testid='stSidebar'] *{user-select:none;}</style>", unsafe_allow_html=True)
+    # === NEW: Pivot controls (sidebar) ===
+    with st.sidebar.expander("📊 Pivot Table (optional)", expanded=False):
+        st.session_state.setdefault("pivot_enable", False)
+        st.session_state.setdefault("pivot_rows", [])
+        st.session_state.setdefault("pivot_cols", [])
+        st.session_state.setdefault("pivot_vals", ["Count"])
+        st.session_state.setdefault("pivot_agg", "sum")
+        st.session_state.setdefault("pivot_pct_mode", "Weighted by Count (rows)")
+        st.session_state.setdefault("pivot_totals", True)
+        st.session_state.setdefault("pivot_flatten", True)
+        st.session_state.setdefault("pivot_sort_rows", False)
+        st.session_state.setdefault("pivot_export_mode", "Both")
+
+        st.session_state.pivot_enable = st.checkbox("Enable pivot", value=st.session_state.pivot_enable)
+
+        dim_options = ["County Name","County Code","Region","AgeGroup","Race","Ethnicity","Sex","Year"]
+        # sensible defaults
+        default_rows = ["AgeGroup"] if "AgeGroup" in dim_options else []
+        default_cols = ["Race"]
+
+        st.session_state.pivot_rows = st.multiselect("Rows", dim_options, default=st.session_state.pivot_rows or default_rows)
+        st.session_state.pivot_cols = st.multiselect("Columns", dim_options, default=st.session_state.pivot_cols or default_cols)
+        st.session_state.pivot_vals = st.multiselect("Values", ["Count","Percent"], default=st.session_state.pivot_vals)
+        st.session_state.pivot_agg = st.selectbox("Aggregation for Count", ["sum","mean","median","max","min"], index=["sum","mean","median","max","min"].index(st.session_state.pivot_agg))
+        st.session_state.pivot_pct_mode = st.selectbox("Percent aggregation", ["Weighted by Count (rows)","Mean (unweighted)"], index=0 if st.session_state.pivot_pct_mode.startswith("Weighted") else 1)
+        st.session_state.pivot_totals = st.checkbox("Show totals (margins)", value=st.session_state.pivot_totals)
+        st.session_state.pivot_flatten = st.checkbox("Flatten headers for CSV", value=st.session_state.pivot_flatten)
+        st.session_state.pivot_sort_rows = st.checkbox("Sort rows by grand total (desc)", value=st.session_state.pivot_sort_rows)
+        st.session_state.pivot_export_mode = st.radio("CSV download includes", ["Raw","Pivot","Both"], index=["Raw","Pivot","Both"].index(st.session_state.pivot_export_mode))
 
     # KPI row
     st.markdown("## 📊 Data Overview")
@@ -735,7 +499,7 @@ def main():
             st.session_state.selected_filters = {}
             st.rerun()
     with right_col:
-        display_census_links(selected_years=choices["selected_years"])
+        display_census_links()
 
     # State
     st.session_state.setdefault("report_df", pd.DataFrame())
@@ -760,11 +524,8 @@ def main():
             "group_by": choices["grouping_vars"],
         }
 
-        # Real “All Counties” label vs Region-specific label
         def _county_label_for_all():
-            if choices["selected_region"] and choices["selected_region"] != "None":
-                return choices["selected_region"]
-            return "All Counties" if "All" in choices["selected_counties"] else "Selected Counties"
+            return choices["selected_region"] or "All Counties" if "All" in choices["selected_counties"] else "Selected Counties"
 
         with st.spinner("🔄 Processing data…"):
             def build_block(county_list: List[str], county_label: str) -> pd.DataFrame:
@@ -783,7 +544,7 @@ def main():
                         selected_agegroup=choices["agegroup_for_backend"],
                         custom_age_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                     )
-                    # Exact Region filter (Cook ≠ others)
+                    # Hard region filter to reflect exact selection in output
                     if choices["selected_region"] and choices["selected_region"] != "None":
                         df_src = attach_region_column(df_src, counties_map)
                         df_src = df_src[df_src["Region"] == choices["selected_region"]]
@@ -802,8 +563,7 @@ def main():
                 return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
             all_frames: List[pd.DataFrame] = []
-            combined = build_block(["All"], _county_label_for_all()) if "All" in choices["selected_counties"] \
-                       else build_block(choices["selected_counties"], "Selected Counties")
+            combined = build_block(["All"], _county_label_for_all()) if "All" in choices["selected_counties"] else build_block(choices["selected_counties"], "Selected Counties")
             if not combined.empty: all_frames.append(combined)
 
             if choices["include_breakdown"] and "All" not in choices["selected_counties"]:
@@ -821,22 +581,18 @@ def main():
                     cols = ["ConcatenatedKey"] + [c for c in cols if c != "ConcatenatedKey"]
                     st.session_state.report_df = st.session_state.report_df[cols]
 
-            # Build pivot (preview) if requested
-            if choices["pivot_enable"] and not st.session_state.report_df.empty:
+            # Build pivot if requested
+            if st.session_state.pivot_enable and not st.session_state.report_df.empty:
                 st.session_state.pivot_df = build_pivot_table(
                     st.session_state.report_df,
-                    rows=choices["pivot_rows"],
-                    cols=choices["pivot_cols"],
-                    values=choices["pivot_vals"],
-                    agg_count=choices["pivot_agg"],
-                    percent_mode=choices["pivot_pct_mode"],
-                    margins=choices["pivot_totals"],
-                    flatten=choices["pivot_flatten"],
-                    sort_rows=choices["pivot_sort_rows"],
-                    append_per_row_var=choices["pivot_append_mode"]
-                )
-                st.session_state.pivot_df = add_concatenated_key_for_pivot(
-                    st.session_state.pivot_df, st.session_state.selected_filters, rows_used=choices["pivot_rows"]
+                    rows=st.session_state.pivot_rows,
+                    cols=st.session_state.pivot_cols,
+                    values=st.session_state.pivot_vals,
+                    agg_count=st.session_state.pivot_agg,
+                    percent_mode=st.session_state.pivot_pct_mode,
+                    margins=st.session_state.pivot_totals,
+                    flatten=st.session_state.pivot_flatten,
+                    sort_rows=st.session_state.pivot_sort_rows
                 )
             else:
                 st.session_state.pivot_df = pd.DataFrame()
@@ -845,13 +601,12 @@ def main():
     if not st.session_state.report_df.empty:
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
-        st.dataframe(sanitize_for_streamlit(st.session_state.report_df), use_container_width=True)
+        st.dataframe(st.session_state.report_df, use_container_width=True)
 
-        # CSV (Raw)
         meta = [
             "# Illinois Population Data Explorer - Export",
             f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "# Data Source: U.S. Census Bureau Population Estimates (CPC/ASRH)",
+            "# Data Source: U.S. Census Bureau Population Estimates",
             f"# Years: {', '.join(st.session_state.selected_filters.get('years', []))}",
             f"# Counties: {', '.join(st.session_state.selected_filters.get('counties', []))}",
             f"# Region Filter: {st.session_state.selected_filters.get('region', 'None')}",
@@ -866,9 +621,9 @@ def main():
         ]
         raw_csv = "\n".join(meta) + "\n" + st.session_state.report_df.to_csv(index=False)
 
-        # Download buttons depending on pivot export preference
-        show_raw = (choices["pivot_export_mode"] in {"Raw","Both"}) or not choices["pivot_enable"]
-        show_pvt = choices["pivot_enable"] and (choices["pivot_export_mode"] in {"Pivot","Both"})
+        # Download buttons based on export mode
+        show_raw = (st.session_state.pivot_export_mode in {"Raw","Both"}) or not st.session_state.pivot_enable
+        show_pvt = st.session_state.pivot_enable and (st.session_state.pivot_export_mode in {"Pivot","Both"})
 
         if show_raw:
             st.download_button("📥 Download CSV (Raw)", data=raw_csv, file_name="illinois_population_data.csv", mime="text/csv")
@@ -876,18 +631,17 @@ def main():
         # Pivot preview & download
         if show_pvt and not st.session_state.pivot_df.empty:
             st.markdown("### 🔁 Pivot Preview")
-            st.dataframe(sanitize_for_streamlit(st.session_state.pivot_df), use_container_width=True)
+            st.dataframe(st.session_state.pivot_df, use_container_width=True)
             pmeta = [
                 "# Illinois Population Data Explorer - Pivot Export",
                 f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                f"# Rows: {', '.join(choices['pivot_rows']) or '(none)'}",
-                f"# Columns: {', '.join(choices['pivot_cols']) or '(none)'}",
-                f"# Values: {', '.join(choices['pivot_vals'])}",
-                f"# Count agg: {choices['pivot_agg']}",
-                f"# Percent mode: {choices['pivot_pct_mode']}",
-                f"# Totals: {'Yes' if choices['pivot_totals'] else 'No'}",
-                f"# Flatten headers: {'Yes' if choices['pivot_flatten'] else 'No'}",
-                f"# Append per row variable: {'Yes' if choices['pivot_append_mode'] else 'No'}",
+                f"# Rows: {', '.join(st.session_state.pivot_rows) or '(none)'}",
+                f"# Columns: {', '.join(st.session_state.pivot_cols) or '(none)'}",
+                f"# Values: {', '.join(st.session_state.pivot_vals)}",
+                f"# Count agg: {st.session_state.pivot_agg}",
+                f"# Percent mode: {st.session_state.pivot_pct_mode}",
+                f"# Totals: {'Yes' if st.session_state.pivot_totals else 'No'}",
+                f"# Flatten headers: {'Yes' if st.session_state.pivot_flatten else 'No'}",
                 "#"
             ]
             p_csv = "\n".join(pmeta) + "\n" + st.session_state.pivot_df.to_csv(index=False)
