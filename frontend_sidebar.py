@@ -1,7 +1,6 @@
 import streamlit as st
 
 # ====================== Shared mappings =======================
-
 RACE_DISPLAY_TO_CODE = {
     "Two or More Races": "TOM",
     "American Indian and Alaska Native": "AIAN",
@@ -12,9 +11,7 @@ RACE_DISPLAY_TO_CODE = {
 }
 RACE_CODE_TO_DISPLAY = {v: k for k, v in RACE_DISPLAY_TO_CODE.items()}
 
-# Official file-layout/codebook links for vintages (used both in "Census Data Links"
-# and by the source-file downloader). These are stable landing PDFs that correspond
-# to the county ASRH files for each vintage.
+# Official PDF/codebook URLs per vintage (also used for ZIP download)
 DATASET_URLS_FOR_VINTAGE = {
     2024: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2024/CC-EST2024-ALLDATA.pdf",
     2023: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2023/CC-EST2023-ALLDATA.pdf",
@@ -31,7 +28,6 @@ DATASET_URLS_FOR_VINTAGE = {
     2012: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2012/cc-est2012-alldata.pdf",
     2011: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2011/cc-est2011-alldata.pdf",
     2010: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf",
-    # For 2000–2009, the county “all data” landing/code pages are within the 2000–2010 vintage doc.
     2009: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf",
     2008: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf",
     2007: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf",
@@ -44,15 +40,10 @@ DATASET_URLS_FOR_VINTAGE = {
     2000: "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf",
 }
 
-# Release strip content (year -> human-readable short “release” phrasing)
-# Keep it brief for the strip. You can update these when official dates refresh.
-RELEASE_STRIP_ITEMS = [
-    (y, "County Population by Characteristics – release") for y in range(2000, 2025)
-]
-# You may replace the generic text above with specific dates if you have them.
+# Content used by the moving strip (exported so app.py can import it)
+RELEASE_STRIP_ITEMS = [(y, "County Population by Characteristics – release") for y in range(2000, 2025)]
 
 # ===================== Sidebar controls =====================
-
 def render_sidebar_controls(
     years_list,
     races_list_raw,
@@ -60,11 +51,10 @@ def render_sidebar_controls(
     agegroup_map_implicit,
     agegroups_list_raw=None,
 ):
-    """Render query builder, display controls, and pivot settings in the sidebar."""
     sb = st.sidebar
     sb.markdown("## 🔍 Query Builder")
 
-    # ---------- Display & Effects (strip + lamps + sidebar width)
+    # ---------- Display & Effects
     with sb.expander("💡 Display & Effects", expanded=True):
         show_release_strip = st.checkbox("Show release strip (top center)", value=True)
         release_speed = st.slider("Strip speed (seconds per loop)", 14, 60, 28)
@@ -74,7 +64,7 @@ def render_sidebar_controls(
         cols = st.columns(2)
         with cols[0]:
             lamp_left_on = st.checkbox("Left lamp on", value=True)
-            dark_enabled = st.checkbox("Dark screen", value=True, help="Dim screen to better see lights.")
+            dark_enabled = st.checkbox("Dark screen", value=True)
         with cols[1]:
             lamp_right_on = st.checkbox("Right lamp on", value=True)
             lamp_intensity = st.slider("Light intensity", 0.0, 1.0, 0.8, step=0.05)
@@ -82,24 +72,15 @@ def render_sidebar_controls(
 
         st.markdown("---")
         st.caption("**Sidebar width**")
-        sidebar_resize_enabled = st.checkbox(
-            "Enable sidebar resizing", value=True,
-            help="Allow horizontal resize of the sidebar."
-        )
+        sidebar_resize_enabled = st.checkbox("Enable sidebar resizing", value=True)
         sidebar_width_px = st.slider("Sidebar width (px)", 240, 420, 280)
         sidebar_lock_width = st.checkbox("Lock sidebar width", value=True)
 
     # ---------- Geography & Time
     with sb.expander("📍 Geography & Time", expanded=False):
-        selected_years = st.multiselect(
-            "Select Year(s):",
-            options=years_list,
-            default=years_list[-1:] if years_list else [],
-        )
+        selected_years = st.multiselect("Select Year(s):", options=years_list, default=years_list[-1:] if years_list else [])
         all_counties = ["All"] + sorted(counties_map.keys())
-        selected_counties = st.multiselect(
-            "Select Counties:", options=all_counties, default=["All"]
-        )
+        selected_counties = st.multiselect("Select Counties:", options=all_counties, default=["All"])
         if "All" in selected_counties and len(selected_counties) > 1:
             st.info("Using 'All' counties (specific selections ignored).")
             selected_counties = ["All"]
@@ -118,20 +99,12 @@ def render_sidebar_controls(
 
     # ---------- Age Settings
     with sb.expander("📋 Age Settings", expanded=False):
-        AGEGROUP_DISPLAY_TO_CODE = {
-            "All": "All",
-            "18-Bracket": "agegroup13",  # your implicit map
-            "6-Bracket": "agegroup14",
-            "2-Bracket": "agegroup15",
-        }
-        selected_agegroup_display = st.selectbox(
-            "Age Group:", list(AGEGROUP_DISPLAY_TO_CODE.keys()), index=0
-        )
+        AGEGROUP_DISPLAY_TO_CODE = { "All": "All", "18-Bracket": "agegroup13", "6-Bracket": "agegroup14", "2-Bracket": "agegroup15" }
+        selected_agegroup_display = st.selectbox("Age Group:", list(AGEGROUP_DISPLAY_TO_CODE.keys()), index=0)
         if selected_agegroup_display != "All":
             code = AGEGROUP_DISPLAY_TO_CODE[selected_agegroup_display]
             br = agegroup_map_implicit.get(code, [])
-            if br:
-                st.caption("**Age Brackets:** " + ", ".join(map(str, br)))
+            if br: st.caption("**Age Brackets:** " + ", ".join(map(str, br)))
 
         enable_custom_ranges = st.checkbox("Enable custom age ranges", value=False)
         st.caption("When enabled, these custom ranges override the Age Group selection.")
@@ -141,16 +114,13 @@ def render_sidebar_controls(
                 if st.checkbox(f"Range {i}", key=f"r{i}"):
                     mn = st.number_input(f"Min {i} (1–18)", 1, 18, d_min, key=f"mn{i}")
                     mx = st.number_input(f"Max {i} (1–18)", 1, 18, d_max, key=f"mx{i}")
-                    if mn <= mx:
-                        custom_ranges.append((int(mn), int(mx)))
+                    if mn <= mx: custom_ranges.append((int(mn), int(mx)))
 
     # ---------- Group Results By
     with sb.expander("📈 Group Results By", expanded=False):
-        grouping_vars = st.multiselect(
-            "Group by any combination (or choose 'All' for totals):",
-            ["All", "Age", "Race", "Ethnicity", "Sex", "Region", "County"],
-            default=["All"],
-        )
+        grouping_vars = st.multiselect("Group by any combination (or choose 'All' for totals):",
+                                       ["All", "Age", "Race", "Ethnicity", "Sex", "Region", "County"],
+                                       default=["All"])
         if "All" in grouping_vars and len(grouping_vars) > 1:
             st.info("Using 'All' (totals only). Other selections ignored.")
             grouping_vars = ["All"]
@@ -158,47 +128,32 @@ def render_sidebar_controls(
     # ---------- Pivot Preview (beta)
     with sb.expander("🔁 Pivot Preview (beta)", expanded=False):
         enable_pivot = st.checkbox("Enable pivot preview", value=False)
-        pivot_rows = st.multiselect(
-            "Row variables (in order):",
+        pivot_rows = st.multiselect("Row variables (in order):",
             ["County", "County Code", "County Name", "Region", "AgeGroup", "Race", "Ethnicity", "Sex", "Year"],
-            default=["County", "Year"]
-        )
-        pivot_cols = st.selectbox(
-            "Column variable (optional):",
-            ["None", "AgeGroup", "Race", "Ethnicity", "Sex", "Year", "Region"],
-            index=0
-        )
+            default=["County", "Year"])
+        pivot_cols = st.selectbox("Column variable (optional):",
+            ["None", "AgeGroup", "Race", "Ethnicity", "Sex", "Year", "Region"], index=0)
         pivot_values = st.selectbox("Values:", ["Count", "Percent"], index=0)
-        pivot_append_rows = st.checkbox("Append when multiple row variables are selected", value=True,
-                                        help="If checked, the app pivots once per row variable and appends all results, like your example.")
+        pivot_append_rows = st.checkbox("Append when multiple row variables are selected", value=True)
         st.caption("A 'ConcatenatedKey' column is added automatically to the pivot output.")
 
-    # ---------- Output Options
+    # ---------- Output
     with sb.expander("⚙️ Output Options", expanded=False):
-        include_breakdown = st.checkbox(
-            "Include Individual County Breakdowns",
-            value=True,
-            help="Show a separate table for each selected county (in addition to combined results)."
-        )
+        include_breakdown = st.checkbox("Include Individual County Breakdowns", value=True)
         if "County" in grouping_vars and include_breakdown:
             st.info("Grouping by County already provides county rows. Turning off extra breakdowns.")
             include_breakdown = False
         debug_mode = st.checkbox("Debug Mode", value=False)
 
-    # ---------- Download source files (selected vintages)
+    # ---------- Download source files
     with sb.expander("📥 Download Source Files", expanded=False):
-        st.caption("Select vintages (years) to package into a ZIP of official file-layout/codebook PDFs.")
-        download_years = st.multiselect(
-            "Vintages:",
-            options=list(sorted(DATASET_URLS_FOR_VINTAGE.keys())),
-            default=[]
-        )
-        # The actual download button is rendered in app.py
+        st.caption("Select vintages (years) to package into a ZIP of official file-layout PDFs.")
+        download_years = st.multiselect("Vintages:", options=list(sorted(DATASET_URLS_FOR_VINTAGE.keys())), default=[])
         if download_years:
-            st.info("Scroll near the top of the main page for the generated ZIP button.")
+            st.info("A ZIP download button will appear in the main pane.")
 
     return {
-        # Display / effects
+        # Display
         "show_release_strip": show_release_strip,
         "release_speed": release_speed,
         "lamp_left_on": lamp_left_on,
@@ -209,39 +164,32 @@ def render_sidebar_controls(
         "sidebar_resize_enabled": sidebar_resize_enabled,
         "sidebar_width_px": sidebar_width_px,
         "sidebar_lock_width": sidebar_lock_width,
-
-        # Core query
+        # Query
         "debug_mode": debug_mode,
         "selected_years": selected_years,
         "selected_counties": selected_counties,
         "selected_race_display": selected_race_display,
-        "selected_race_code": "All" if selected_race_display == "All"
-                               else RACE_DISPLAY_TO_CODE.get(selected_race_display, selected_race_display),
+        "selected_race_code": "All" if selected_race_display == "All" else RACE_DISPLAY_TO_CODE.get(selected_race_display, selected_race_display),
         "selected_sex": selected_sex,
         "selected_ethnicity": selected_ethnicity,
         "selected_region": selected_region,
         "selected_agegroup_display": selected_agegroup_display,
-        "agegroup_for_backend": {"All": None, "18-Bracket": "agegroup13",
-                                 "6-Bracket": "agegroup14", "2-Bracket": "agegroup15"}[selected_agegroup_display],
+        "agegroup_for_backend": {"All": None, "18-Bracket": "agegroup13", "6-Bracket": "agegroup14", "2-Bracket": "agegroup15"}[selected_agegroup_display],
         "enable_custom_ranges": enable_custom_ranges,
         "custom_ranges": custom_ranges,
         "grouping_vars": grouping_vars,
         "include_breakdown": include_breakdown,
-
         # Pivot
         "enable_pivot": enable_pivot,
         "pivot_rows": pivot_rows,
         "pivot_cols": None if pivot_cols == "None" else pivot_cols,
         "pivot_values": pivot_values,
         "pivot_append_rows": pivot_append_rows,
-
         # Downloads
         "download_years": [int(y) for y in download_years],
     }
 
-
 def display_census_links():
-    """Right-side expander for Census links + documentation of 18 age-group rationale."""
     docs = [
         (2024, "April 1, 2020 to July 1, 2024", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2024/CC-EST2024-ALLDATA.pdf"),
         (2023, "April 1, 2020 to July 1, 2023", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2020-2023/CC-EST2023-ALLDATA.pdf"),
@@ -259,7 +207,6 @@ def display_census_links():
         (2011, "April 1, 2010 to July 1, 2011", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2010-2011/cc-est2011-alldata.pdf"),
         (2010, "April 1, 2000 to July 1, 2010", "https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/cc-est2010-alldata.pdf"),
     ]
-
     with st.expander("Census Data Links", expanded=False):
         st.markdown("""
 **Important Links**  
@@ -281,13 +228,11 @@ def display_census_links():
         st.markdown("---")
         st.markdown("""
 ### Why 18 age groups?
-The **County Population by Characteristics (ASRH)** files provide population by **single-year age codes** internally, but public file layouts aggregate into **18 standard 5‑year brackets** through older adulthood, ending with **80+**:
-**0–4, 5–9, 10–14, …, 75–79, 80+** (18 total buckets).
+The **County Population by Characteristics (ASRH)** files provide population by single-year ages internally, but public layouts use **18 standard brackets**: **0–4, 5–9, …, 75–79, 80+**.
+**Why?**  
+- Aligns with common **demographic standards**, enabling comparability.  
+- 5-year bins reduce random noise and protect **privacy** for small cells.  
+- **80+** as an open interval avoids sparse 85+ cells for small counties.  
 
-**Rationale**
-- These brackets align with common **demographic reporting standards** used across Census products, making **rates and comparisons** consistent over time and across geographies.  
-- 5-year ages reduce **random year-to-year noise**, stabilize small‑area estimates, and help ensure **privacy** (especially for sparse age/race/sex cells).  
-- The **80+ open interval** captures longevity without forcing thin cells above 85+ for small counties.  
-
-Your app also supports **custom ranges** and several **pre-binned sets** (18/6/2 brackets) for additional flexibility.
+The app supports **custom ranges** and **pre-binned (18/6/2)** options as convenience layers on top of those standards.
 """)
