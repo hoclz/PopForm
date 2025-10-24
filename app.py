@@ -46,7 +46,7 @@ st.markdown("""
 /* ===== Release Ticker (refined) ===== */
 .release-controls-row{display:flex;align-items:center;justify-content:center;gap:1rem;margin:.25rem 0 .4rem 0;}
 .release-ticker-wrap{position:relative;width:100%;overflow:hidden;background:linear-gradient(90deg,#0d47a1,#1565c0);border-bottom:1px solid rgba(255,255,255,.25);box-shadow:0 2px 6px rgba(13,71,161,.15);}
-.release-ticker-wrap::before,.release-ticker-wrap::after{content:\"\";position:absolute;top:0;bottom:0;width:80px;pointer-events:none;z-index:2;}
+.release-ticker-wrap::before,.release-ticker-wrap::after{content:"";position:absolute;top:0;bottom:0;width:80px;pointer-events:none;z-index:2;}
 .release-ticker-wrap::before{left:0;background:linear-gradient(90deg,rgba(13,71,161,1),rgba(13,71,161,0));}
 .release-ticker-wrap::after{right:0;background:linear-gradient(270deg,rgba(21,101,192,1),rgba(21,101,192,0));}
 .release-ticker-inner{--marquee-speed:135s;display:flex;width:max-content;white-space:nowrap;will-change:transform;animation:ticker-marquee var(--marquee-speed) linear infinite;padding:8px 0;}
@@ -65,7 +65,7 @@ st.markdown("""
 .metric-value{font-size:2.2rem;font-weight:700;color:#1a365d;margin-bottom:.3rem;line-height:1;}
 .metric-label{font-size:.85rem;color:#4a5568;font-weight:500;line-height:1.2;}
 .kpi-brick{width:15px;min-width:15px;height:120px;background:#bfbfbf;border-radius:4px;box-shadow:inset 0 0 0 1px #9e9e9e,0 1px 2px rgba(0,0,0,.08);margin:0 auto;position:relative;}
-.kpi-brick::before,.kpi-brick::after{content:\"\";position:absolute;left:3px;right:3px;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;}
+.kpi-brick::before,.kpi-brick::after{content:"";position:absolute;left:3px;right:3px;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;}
 .kpi-brick::before{top:32px}.kpi-brick::after{bottom:32px}
 </style>
 """, unsafe_allow_html=True)
@@ -77,11 +77,22 @@ try:
     import frontend_bracket_utils
     from frontend_sidebar import render_sidebar_controls, display_census_links
 except Exception as e:
-    st.error(f\"Import error: {e}\")
+    st.error(f"Import error: {e}")
     st.stop()
 
-DATA_FOLDER = \"./data\"
-FORM_CONTROL_PATH = \"./form_control_UI_data.csv\"
+DATA_FOLDER = "./data"
+FORM_CONTROL_PATH = "./form_control_UI_data.csv"
+
+# ---- Region definitions (unique assignment with precedence: Cook > Collar > Urban > Rural)
+COOK_SET   = {31}
+COLLAR_SET = {43, 89, 97, 125, 197}
+URBAN_SET  = {201,125,97,39,89,43,31,93,197,91,143,179,127,19,183,165,109,113,173}
+RURAL_SET  = {
+    1,3,5,7,9,11,13,15,17,21,23,25,27,29,33,35,37,41,45,47,49,51,53,55,57,59,61,63,65,67,
+    69,71,73,75,77,79,81,83,85,87,95,99,101,103,105,107,111,115,117,119,121,123,129,131,
+    133,135,137,139,141,145,147,149,151,153,155,157,159,161,163,167,169,171,175,177,181,
+    185,187,189,191,193,195,199,203
+}
 
 # ---- Region definitions (unique assignment with precedence: Cook > Collar > Urban > Rural)
 COOK_SET   = {31}
