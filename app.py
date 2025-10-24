@@ -277,7 +277,7 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 def _normalize_token(x: object) -> str:
     s = str(x).strip()
     s = s.replace("–", "-").replace("—", "-")
-    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"\\s+", "_", s)
     s = re.sub(r"[^0-9A-Za-z_\\-]+", "", s)
     return s
 
@@ -453,6 +453,120 @@ def build_pivot_table(df: pd.DataFrame,
     
     return pivot
 
+# ──────────────────────────────────────────────────────────────
+# Tokenization helpers (POP_LONG_Q)
+# ──────────────────────────────────────────────────────────────
+def _sex_to_q2_token(sex: str) -> str:
+    s = str(sex or "").strip().lower()
+    if s == "male": return "S1"
+    if s == "female": return "S2"
+    return "S0"  # All/unknown
+
+def _eth_to_q4_token(eth: str) -> str:
+    e = str(eth or "").strip().lower()
+    if e in {"hispanic", "hisp"}: return "E1"
+    if e in {"not hispanic", "non-hispanic", "non hispanic"}: return "E2"
+    return "E0"  # All/unknown
+
+BRACKET_TO_CODE = {v:k for k, v in {
+    1:"0-4",2:"5-9",3:"10-14",4:"15-19",5:"20-24",6:"25-29",7:"30-34",8:"35-39",9:"40-44",
+    10:"45-49",11:"50-54",12:"55-59",13:"60-64",14:"65-69",15:"70-74",16:"75-79",17:"80-84",18:"80+"
+}.items()}
+
+def _age_to_q5_code(row: pd.Series, age_scheme: str) -> int:
+    # Prefer raw Age if available
+    if 'Age' in row and pd.notna(row['Age']):
+        try:
+            age_code = int(row['Age'])
+            if age_scheme.startswith("CPC") and age_code == 0:
+                # In CPC scheme we want 1–18; keep 0 only if user selects raw
+                return 0
+            return age_code
+        except Exception:
+            pass
+    # Else try AgeGroup label
+    if 'AgeGroup' in row and pd.notna(row['AgeGroup']):
+        lab = str(row['AgeGroup']).strip()
+        # e.g., "0-4", "80+"
+        if lab in BRACKET_TO_CODE: 
+            return BRACKET_TO_CODE[lab]
+        # try to parse "X-Y"
+        m = re.match(r"^(\\d+)-(\\d+)$", lab)
+        if m:
+            lo = int(m.group(1))
+            # Map to CPC coding by lower bound /5 + 1
+            return int(lo/5) + 1
+        if lab.endswith("+"):
+            return 18
+    return 0
+
+def _canon_race(r: str) -> str:
+    r = str(r or "").strip()
+    if r in {"Asian","NHOPI"}:
+        return "Asian/Pacific Islander"
+    if r in {"White","Black","AIAN"}:
+        return {"White":"White","Black":"Black","AIAN":"American Indian and Alaska Native"}[r]
+    # Pass through others
+    return r
+
+def build_pop_long_q(df_raw: pd.DataFrame,
+                     counties_map: Dict[str,int],
+                     year_val: int,
+                     schema: str = "SAS/POP_LONG_Q (S/E tokens)",
+                     apply_rules: bool = True,
+                     age_scheme: str = "CPC 18 buckets (1–18)",
+                     include_county_cols: bool = True) -> pd.DataFrame:
+    if df_raw is None or df_raw.empty:
+        return pd.DataFrame(columns=["q2","q3","q4","q1","q5","q7","q8"])
+
+    df = df_raw.copy()
+
+    # Ensure County Code/Name
+    df = ensure_county_names(df, counties_map)
+    if 'County' in df.columns and 'County Code' not in df.columns:
+        try:
+            df['County Code'] = pd.to_numeric(df['County'], errors='coerce').astype('Int64')
+        except Exception:
+            pass
+
+    # Apply POP_LONG standard rules (age≠0 and limited race set for 2020+)
+    if apply_rules:
+        if int(year_val) >= 2020 and 'Age' in df.columns:
+            df = df[df['Age'] != 0]
+        # Limit race set to White, Black/African American, AIAN, Asian+NHOPI (API)
+        if 'Race' in df.columns:
+            df = df[df['Race'].isin(["White","Black","AIAN","Asian","NHOPI"])]
+            df['Race Canonical'] = df['Race'].map(_canon_race)
+        else:
+            df['Race Canonical'] = "All"
+    else:
+        df['Race Canonical'] = df.get('Race', "All")
+
+    # Prepare tokens
+    df['q1'] = int(year_val)
+    df['q2'] = df.get('Sex', 'All').apply(_sex_to_q2_token)
+    # POP_LONG_Q uses a constant "R" as the Race indicator column (based on legacy SAS). Keep configurable via schema.
+    df['q3'] = 'R' if schema.startswith('SAS') else df['Race Canonical'].astype(str)
+    df['q4'] = df.get('Ethnicity', 'All').apply(_eth_to_q4_token)
+    df['q5'] = df.apply(lambda r: _age_to_q5_code(r, age_scheme), axis=1)
+    df['q7'] = 1
+    df['q8'] = df.get('Count', 0).astype('int64')
+
+    # Order and attach helpful descriptors for QA
+    keep_cols = ["q2","q3","q4","q1","q5","q7","q8"]
+    if include_county_cols:
+        for c in ["County Code","County Name"]:
+            if c in df.columns: keep_cols.append(c)
+    for c in ["Race Canonical","Race","Ethnicity","Sex","Age","AgeGroup"]:
+        if c in df.columns and c not in keep_cols: keep_cols.append(c)
+
+    out = df[keep_cols].copy()
+    # Final sort for repeatability
+    sort_cols = [c for c in ["County Code","q1","q2","q4","q3","q5"] if c in out.columns]
+    if sort_cols:
+        out = out.sort_values(by=sort_cols).reset_index(drop=True)
+    return out
+
 def main():
     # ===== Top-center ticker controls =====
     st.session_state.setdefault("show_release_ticker", True)
@@ -471,7 +585,7 @@ def main():
         render_release_ticker(CPC_RELEASES, speed_seconds=st.session_state.ticker_speed)
 
     # ===== Arched header =====
-    st.markdown("""
+    st.markdown("""\
 <div class="hero-arch">
   <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
     <path d="M10,190 Q600,-150 1190,190" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
@@ -488,7 +602,7 @@ def main():
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
 
-    # Sidebar (expects “Region” in Group Results By)
+    # Sidebar (expects "Region" in Group Results By)
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
     # === Pivot controls (sidebar) ===
@@ -561,6 +675,7 @@ def main():
             st.session_state.report_df = pd.DataFrame()
             st.session_state.pivot_df = pd.DataFrame()
             st.session_state.selected_filters = {}
+            st.session_state.token_df = pd.DataFrame()
             st.rerun()
     with right_col:
         display_census_links()
@@ -569,6 +684,7 @@ def main():
     st.session_state.setdefault("report_df", pd.DataFrame())
     st.session_state.setdefault("pivot_df", pd.DataFrame())
     st.session_state.setdefault("selected_filters", {})
+    st.session_state.setdefault("token_df", pd.DataFrame())
 
     # Generate
     if go:
@@ -661,7 +777,56 @@ def main():
             else:
                 st.session_state.pivot_df = pd.DataFrame()
 
-    # Results / download
+            # ====== NEW: Build tokenized POP_LONG_Q if enabled ======
+            st.session_state.token_df = pd.DataFrame()
+            if choices.get("tokenization", {}).get("enabled", False):
+                token_frames = []
+                # Tokenization always uses base ages (no aggregation) to keep AGEGRP codes intact
+                for year in choices["selected_years"]:
+                    df_src = backend_main_processing.process_population_data(
+                        data_folder=DATA_FOLDER,
+                        agegroup_map_explicit=agegroup_map_explicit,
+                        counties_map=counties_map,
+                        selected_years=[year],
+                        selected_counties=(choices["selected_counties"] if "All" not in choices["selected_counties"] else ["All"]),
+                        selected_race="All",              # use full set; rules applied downstream
+                        selected_ethnicity="All",
+                        selected_sex="All",
+                        selected_region=choices["selected_region"],
+                        selected_agegroup=None,            # <-- keep Age as 0..18 from source
+                        custom_age_ranges=[],              # no custom ranges
+                    )
+                    if choices["selected_region"] and choices["selected_region"] != "None":
+                        df_src = attach_region_column(df_src, counties_map)
+                        df_src = df_src[df_src["Region"] == choices["selected_region"]]
+                    if df_src is None or df_src.empty:
+                        continue
+
+                    # Ensure County Code present for stable grouping
+                    df_src = ensure_county_names(df_src, counties_map)
+                    if 'County Code' not in df_src.columns and 'County' in df_src.columns:
+                        df_src['County Code'] = pd.to_numeric(df_src['County'], errors='coerce').astype('Int64')
+
+                    # Group to Year × County × Sex × Ethnicity × Race × Age
+                    group_cols = [c for c in ['County Code','Sex','Ethnicity','Race','Age'] if c in df_src.columns]
+                    if not group_cols or 'Count' not in df_src.columns:
+                        continue
+                    g = df_src.groupby(group_cols, dropna=False)['Count'].sum().reset_index()
+
+                    token_df = build_pop_long_q(
+                        g, counties_map, year_val=year,
+                        schema=choices['tokenization']['schema'],
+                        apply_rules=choices['tokenization']['apply_pop_long_rules'],
+                        age_scheme=choices['tokenization']['age_scheme'],
+                        include_county_cols=choices['tokenization']['include_county_cols']
+                    )
+                    if not token_df.empty:
+                        token_frames.append(token_df)
+
+                if token_frames:
+                    st.session_state.token_df = pd.concat(token_frames, ignore_index=True)
+
+    # ===== Results / download =====
     if not st.session_state.report_df.empty:
         st.success("✅ Report generated successfully!")
         st.markdown("### 📋 Results")
@@ -712,6 +877,27 @@ def main():
             ]
             p_csv = "\n".join(pmeta) + "\n" + st.session_state.pivot_df.to_csv(index=False)
             st.download_button("📥 Download CSV (Pivot)", data=p_csv, file_name="illinois_population_pivot.csv", mime="text/csv")
+
+    # ===== Tokenized POP_LONG_Q output =====
+    if not st.session_state.token_df.empty:
+        st.markdown("---")
+        st.success("✅ Tokenized dataset (POP_LONG_Q style) built!")
+        st.markdown("### 🧩 POP_LONG_Q Preview")
+        st.dataframe(st.session_state.token_df, use_container_width=True)
+        tmeta = [
+            "# POP_LONG_Q export (tokenized)",
+            f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# q2: Sex token (S1=Male, S2=Female, S0=All)",
+            f"# q3: Race indicator ({'constant R' if choices.get('tokenization',{}).get('schema','').startswith('SAS') else 'race label'})",
+            f"# q4: Ethnicity token (E1=Hispanic, E2=Not Hispanic, E0=All)",
+            f"# q1: Calendar year",
+            f"# q5: Age code (CPC 1–18)",
+            f"# q7: 1 (indicator)",
+            f"# q8: population count",
+            "#"
+        ]
+        t_csv = "\n".join(tmeta) + "\n" + st.session_state.token_df.to_csv(index=False)
+        st.download_button("📥 Download CSV (POP_LONG_Q)", data=t_csv, file_name="pop_long_q.csv", mime="text/csv")
 
     st.markdown("---")
     st.markdown("<div style='text-align:center;color:#666;'>Illinois Population Data Explorer • U.S. Census Bureau Data • 2000–2024</div>", unsafe_allow_html=True)
