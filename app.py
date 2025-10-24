@@ -68,7 +68,7 @@ st.markdown("""
 .kpi-brick::before,.kpi-brick::after{content:\"\";position:absolute;left:3px;right:3px;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;}
 .kpi-brick::before{top:32px}.kpi-brick::after{bottom:32px}
 </style>
-\"\"\", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # External modules
 try:
