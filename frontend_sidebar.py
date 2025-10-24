@@ -1,3 +1,4 @@
+
 import streamlit as st
 from typing import List, Tuple, Dict
 
@@ -97,6 +98,38 @@ def render_sidebar_controls(
             st.info("Using 'All' (totals only). Other selections ignored.")
             grouping_vars = ["All"]
 
+    # 🧩 Tokenization (POP_LONG_Q)
+    with sb.expander("🧩 Tokenized Output • POP_LONG_Q", expanded=False):
+        enable_tokenization = st.checkbox(
+            "Enable POP_LONG tokenization (build q1–q8 fields)",
+            value=False, key="ui_enable_tokenization",
+            help="Creates a SAS-style tokenized extract like POP_LONG_Q for use in downstream pipelines."
+        )
+        token_schema = st.selectbox(
+            "Token schema",
+            ["SAS/POP_LONG_Q (S/E tokens)", "Custom (minimal)"],
+            index=0, key="ui_token_schema",
+            help="SAS/POP_LONG_Q uses S1/S2 for Sex, E1/E2 for Ethnicity, constant 'R' for Race indicator, "
+                 "Age=1–18 for CPC 5-year groups, q7=1 and q8=population count."
+        )
+        apply_pop_long_rules = st.checkbox(
+            "Apply POP_LONG standard rules (age≠0 for 2020+, only White/Black/AIAN/Asian+NHOPI)",
+            value=True, key="ui_apply_pop_long_rules"
+        )
+        token_age_scheme = st.selectbox(
+            "Age code scheme for q5",
+            ["CPC 18 buckets (1–18)", "Raw AGEGRP (0–18)"],
+            index=0, key="ui_token_age_scheme"
+        )
+        include_county_cols = st.checkbox(
+            "Include County Name/Code columns in tokenized output",
+            value=True, key="ui_token_include_county"
+        )
+        st.caption(
+            "When tokenization is enabled, the app builds a long-form table per **Year × County × Sex × Ethnicity × Race × Age**. "
+            "The constant `q7=1` and `q8` equals the population count. You can still use the normal report and pivot features."
+        )
+
     # ⚙️ Output Options
     with sb.expander("⚙️ Output Options", expanded=False):
         include_breakdown = st.checkbox(
@@ -133,6 +166,14 @@ def render_sidebar_controls(
         "custom_ranges": custom_ranges,
         "grouping_vars": grouping_vars,
         "include_breakdown": include_breakdown,
+        # --- tokenization selections ---
+        "tokenization": {
+            "enabled": enable_tokenization,
+            "schema": token_schema,
+            "apply_pop_long_rules": apply_pop_long_rules,
+            "age_scheme": token_age_scheme,
+            "include_county_cols": include_county_cols,
+        }
     }
 
 
