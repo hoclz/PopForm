@@ -41,7 +41,7 @@ CPC_RELEASES: List[Tuple[int, str]] = [
 ]
 
 # ====== Global CSS (ticker + header + KPI bricks) ======
-st.markdown(\"\"\"
+st.markdown("""
 <style>
 /* ===== Release Ticker (refined) ===== */
 .release-controls-row{display:flex;align-items:center;justify-content:center;gap:1rem;margin:.25rem 0 .4rem 0;}
