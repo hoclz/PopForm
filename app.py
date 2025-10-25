@@ -1,3 +1,4 @@
+# app.py — Illinois Population Data Explorer (fixed)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,7 +6,7 @@ import re
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
-# Page setup
+# Page setup (must be first Streamlit call)
 st.set_page_config(page_title="Illinois Population Data", layout="wide", page_icon="🏛️")
 
 # ─────────────────────────────────────────────────────────────
@@ -40,7 +41,8 @@ CPC_RELEASES: List[Tuple[int, str]] = [
 ]
 
 # ====== Global CSS (ticker + header + KPI bricks) ======
-st.markdown("""
+st.markdown(
+    """
 <style>
 /* ===== Release Ticker (refined) ===== */
 .release-controls-row{display:flex;align-items:center;justify-content:center;gap:1rem;margin:.25rem 0 .4rem 0;}
@@ -67,7 +69,9 @@ st.markdown("""
 .kpi-brick::before,.kpi-brick::after{content:"";position:absolute;left:3px;right:3px;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;}
 .kpi-brick::before{top:32px}.kpi-brick::after{bottom:32px}
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # External modules
 try:
@@ -95,127 +99,179 @@ RURAL_SET  = {
 REGION_LABELS = ("Cook County", "Collar Counties", "Urban Counties", "Rural Counties")
 
 RACE_DISPLAY_TO_CODE = {
-    "Two or More Races":"TOM","American Indian and Alaska Native":"AIAN",
-    "Black or African American":"Black","White":"White",
-    "Native Hawaiian and Other Pacific Islander":"NHOPI","Asian":"Asian",
+    "Two or More Races": "TOM",
+    "American Indian and Alaska Native": "AIAN",
+    "Black or African American": "Black",
+    "White": "White",
+    "Native Hawaiian and Other Pacific Islander": "NHOPI",
+    "Asian": "Asian",
 }
-RACE_CODE_TO_DISPLAY = {v:k for k, v in RACE_DISPLAY_TO_CODE.items()}
+RACE_CODE_TO_DISPLAY = {v: k for k, v in RACE_DISPLAY_TO_CODE.items()}
 
 CODE_TO_BRACKET = {
-    1:"0-4",2:"5-9",3:"10-14",4:"15-19",5:"20-24",6:"25-29",7:"30-34",8:"35-39",9:"40-44",
-    10:"45-49",11:"50-54",12:"55-59",13:"60-64",14:"65-69",15:"70-74",16:"75-79",17:"80-84",18:"80+",
+    1: "0-4",  2: "5-9",  3: "10-14", 4: "15-19", 5: "20-24", 6: "25-29",
+    7: "30-34", 8: "35-39", 9: "40-44", 10: "45-49", 11: "50-54", 12: "55-59",
+    13: "60-64", 14: "65-69", 15: "70-74", 16: "75-79", 17: "80-84", 18: "80+",
 }
 
 def combine_codes_to_label(codes: List[int]) -> str:
     codes = sorted(set(int(c) for c in codes))
-    if not codes: return ""
+    if not codes:
+        return ""
     lows, highs = [], []
     for c in codes:
         s = CODE_TO_BRACKET.get(c, "")
         if "-" in s:
-            a,b = s.split("-"); lows.append(int(a)); highs.append(int(b))
+            a, b = s.split("-")
+            lows.append(int(a))
+            highs.append(int(b))
         elif s.endswith("+"):
-            lows.append(int(s[:-1])); highs.append(999)
-    if not lows: return "-".join(str(c) for c in codes)
+            lows.append(int(s[:-1]))
+            highs.append(999)
+    if not lows:
+        return "-".join(str(c) for c in codes)
     lo, hi = min(lows), max(highs)
     return f"{lo}+" if hi >= 999 else f"{lo}-{hi}"
 
-def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.DataFrame:
-    if df is None or df.empty: return df
-    id_to_name = {v:k for k,v in counties_map.items()}
-    if 'County Code' in df.columns and 'County Name' not in df.columns:
-        df['County Name'] = df['County Code'].map(id_to_name).fillna(df['County Code'])
-    if 'County' in df.columns:
+def ensure_county_names(df: pd.DataFrame, counties_map: Dict[str, int]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    id_to_name = {v: k for k, v in counties_map.items()}
+    if "County Code" in df.columns and "County Name" not in df.columns:
+        df["County Name"] = df["County Code"].map(id_to_name).fillna(df["County Code"])
+    if "County" in df.columns:
         def _map(v):
             try:
-                if isinstance(v, (int, np.integer)) and v in id_to_name: return id_to_name[v]
-                if isinstance(v, str) and v.isdigit() and int(v) in id_to_name: return id_to_name[int(v)]
-            except Exception: pass
+                if isinstance(v, (int, np.integer)) and v in id_to_name:
+                    return id_to_name[v]
+                if isinstance(v, str) and v.isdigit() and int(v) in id_to_name:
+                    return id_to_name[int(v)]
+            except Exception:
+                pass
             return v
-        df['County'] = df['County'].apply(_map)
+        df["County"] = df["County"].apply(_map)
     return df
 
 def _county_code_from_row(row, counties_map: Dict[str, int]) -> Optional[int]:
-    if 'County Code' in row and pd.notna(row['County Code']):
-        try: return int(row['County Code'])
-        except Exception: pass
-    if 'County' in row and pd.notna(row['County']):
-        try: return int(row['County'])
-        except Exception: pass
-    if 'County Name' in row and pd.notna(row['County Name']):
-        return int(counties_map.get(str(row['County Name']), np.nan)) if str(row['County Name']) in counties_map else None
+    if "County Code" in row and pd.notna(row["County Code"]):
+        try:
+            return int(row["County Code"])
+        except Exception:
+            pass
+    if "County" in row and pd.notna(row["County"]):
+        try:
+            return int(row["County"])
+        except Exception:
+            pass
+    if "County Name" in row and pd.notna(row["County Name"]):
+        name = str(row["County Name"])
+        return int(counties_map.get(name)) if name in counties_map else None
     return None
 
 def _code_to_region(code: Optional[int]) -> Optional[str]:
-    if code is None: return None
-    try: c = int(code)
-    except Exception: return None
-    if c in COOK_SET:   return "Cook County"
-    if c in COLLAR_SET: return "Collar Counties"
-    if c in URBAN_SET:  return "Urban Counties"
-    if c in RURAL_SET:  return "Rural Counties"
+    if code is None:
+        return None
+    try:
+        c = int(code)
+    except Exception:
+        return None
+    if c in COOK_SET:
+        return "Cook County"
+    if c in COLLAR_SET:
+        return "Collar Counties"
+    if c in URBAN_SET:
+        return "Urban Counties"
+    if c in RURAL_SET:
+        return "Rural Counties"
     return "Unknown Region"
 
-def attach_region_column(df: pd.DataFrame, counties_map: Dict[str,int]) -> pd.DataFrame:
-    if df is None or df.empty: return df
+def attach_region_column(df: pd.DataFrame, counties_map: Dict[str, int]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
     df = df.copy()
-    if 'Region' in df.columns:
-        df['Region'] = df['Region'].apply(
-            lambda x: _code_to_region(_county_code_from_row({'County Code': None, 'County': None, 'County Name': x}, counties_map))
-            if x not in REGION_LABELS else x
+    if "Region" in df.columns:
+        df["Region"] = df["Region"].apply(
+            lambda x: _code_to_region(
+                _county_code_from_row({"County Code": None, "County": None, "County Name": x}, counties_map)
+            ) if x not in REGION_LABELS else x
         )
         return df
-    df['Region'] = df.apply(lambda r: _code_to_region(_county_code_from_row(r, counties_map)), axis=1)
+    df["Region"] = df.apply(lambda r: _code_to_region(_county_code_from_row(r, counties_map)), axis=1)
     return df
 
-def attach_agegroup_column(df: pd.DataFrame, include_age: bool, agegroup_for_backend: Optional[str],
-                           custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
-    if not include_age: return df
+def attach_agegroup_column(
+    df: pd.DataFrame,
+    include_age: bool,
+    agegroup_for_backend: Optional[str],
+    custom_ranges: List[Tuple[int, int]],
+    agegroup_map_implicit: Dict[str, list],
+) -> pd.DataFrame:
+    if not include_age:
+        return df
     df = df.copy()
     if custom_ranges:
-        df['AgeGroup'] = np.nan
+        df["AgeGroup"] = np.nan
         covered = np.zeros(len(df), dtype=bool)
-        for (mn,mx) in custom_ranges:
-            mn_i, mx_i = max(1,int(mn)), min(18,int(mx))
-            if mn_i > mx_i: continue
-            codes = list(range(mn_i, mx_i+1))
+        for (mn, mx) in custom_ranges:
+            mn_i, mx_i = max(1, int(mn)), min(18, int(mx))
+            if mn_i > mx_i:
+                continue
+            codes = list(range(mn_i, mx_i + 1))
             label = combine_codes_to_label(codes)
-            mask = df['Age'].between(mn_i, mx_i)
-            df.loc[mask, 'AgeGroup'] = label; covered |= mask.to_numpy()
-        if (~covered).any(): df.loc[~covered, 'AgeGroup'] = "Other Ages"
+            mask = df["Age"].between(mn_i, mx_i)
+            df.loc[mask, "AgeGroup"] = label
+            covered |= mask.to_numpy()
+        if (~covered).any():
+            df.loc[~covered, "AgeGroup"] = "Other Ages"
         return df
     if agegroup_for_backend:
-        df['AgeGroup'] = np.nan
+        df["AgeGroup"] = np.nan
         for expr in agegroup_map_implicit.get(agegroup_for_backend, []):
             try:
                 mask = frontend_bracket_utils.parse_implicit_bracket(df, str(expr))
-                df.loc[mask, 'AgeGroup'] = str(expr)
+                df.loc[mask, "AgeGroup"] = str(expr)
             except Exception:
-                bexpr = str(expr).strip(); m = None
+                bexpr = str(expr).strip()
+                m = None
                 if "-" in bexpr:
-                    a,b = bexpr.split("-"); m = df['Age'].between(int(a), int(b))
+                    a, b = bexpr.split("-")
+                    m = df["Age"].between(int(a), int(b))
                 elif bexpr.endswith("+") and bexpr[:-1].isdigit():
-                    m = df['Age'] >= int(bexpr[:-1])
-                if m is not None: df.loc[m, 'AgeGroup'] = bexpr
-        if df['AgeGroup'].isna().any(): df['AgeGroup'] = df['AgeGroup'].fillna("Other Ages")
+                    m = df["Age"] >= int(bexpr[:-1])
+                if m is not None:
+                    df.loc[m, "AgeGroup"] = bexpr
+        if df["AgeGroup"].isna().any():
+            df["AgeGroup"] = df["AgeGroup"].fillna("Other Ages")
         return df
-    df['AgeGroup'] = "All Ages"; return df
+    df["AgeGroup"] = "All Ages"
+    return df
 
-def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str: str,
-                    county_label: str, counties_map: Dict[str,int], agegroup_for_backend: Optional[str],
-                    custom_ranges: List[Tuple[int,int]], agegroup_map_implicit: Dict[str, list]) -> pd.DataFrame:
+def aggregate_multi(
+    df_source: pd.DataFrame,
+    grouping_vars: List[str],
+    year_str: str,
+    county_label: str,
+    counties_map: Dict[str, int],
+    agegroup_for_backend: Optional[str],
+    custom_ranges: List[Tuple[int, int]],
+    agegroup_map_implicit: Dict[str, list],
+) -> pd.DataFrame:
     grouping_vars_clean = [g for g in grouping_vars if g != "All"]
+
     def _empty():
         base = (["County"] if "County" not in grouping_vars_clean else [])
         cols = [("AgeGroup" if g == "Age" else g) for g in grouping_vars_clean]
         return pd.DataFrame(columns=base + cols + ["Count", "Percent", "Year"])
-    if df_source is None or df_source.empty: return _empty()
+
+    if df_source is None or df_source.empty:
+        return _empty()
 
     total_population = df_source["Count"].sum()
-    if total_population == 0: return _empty()
+    if total_population == 0:
+        return _empty()
 
     if len(grouping_vars_clean) == 0:
-        out = pd.DataFrame({"Count":[int(total_population)], "Percent":[100.0], "Year":[str(year_str)]})
+        out = pd.DataFrame({"Count": [int(total_population)], "Percent": [100.0], "Year": [str(year_str)]})
         out.insert(0, "County", county_label)
         out = ensure_county_names(out, counties_map)
         return out
@@ -226,32 +282,39 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 
     group_fields = []
     for gv in grouping_vars_clean:
-        if gv == "Age": group_fields.append("AgeGroup")
-        elif gv == "County": group_fields.append("County")
-        elif gv == "Region": group_fields.append("Region")
-        else: group_fields.append(gv)
+        if gv == "Age":
+            group_fields.append("AgeGroup")
+        elif gv == "County":
+            group_fields.append("County")
+        elif gv == "Region":
+            group_fields.append("Region")
+        else:
+            group_fields.append(gv)
 
     grouped = df.groupby(group_fields, dropna=False)["Count"].sum().reset_index()
 
     if "Race" in grouped.columns:
-        grouped["Race"] = grouped["Race"].map({v:k for k,v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
+        grouped["Race"] = grouped["Race"].map({v: k for k, v in RACE_DISPLAY_TO_CODE.items()}).fillna(grouped["Race"])
 
     grouped["Year"] = str(year_str)
 
     if "County" in grouped.columns:
-        grouped.rename(columns={"County":"County Code"}, inplace=True)
+        grouped.rename(columns={"County": "County Code"}, inplace=True)
         grouped = ensure_county_names(grouped, counties_map)
 
     denom_keys = ["Year"]
-    if "County Code" in grouped.columns and "County" in grouping_vars_clean: denom_keys.append("County Code")
-    if "Region" in grouped.columns and "Region" in grouping_vars_clean:     denom_keys.append("Region")
-    if "AgeGroup" in grouped.columns and "Age" in grouping_vars_clean:      denom_keys.append("AgeGroup")
+    if "County Code" in grouped.columns and "County" in grouping_vars_clean:
+        denom_keys.append("County Code")
+    if "Region" in grouped.columns and "Region" in grouping_vars_clean:
+        denom_keys.append("Region")
+    if "AgeGroup" in grouped.columns and "Age" in grouping_vars_clean:
+        denom_keys.append("AgeGroup")
 
     if denom_keys:
         den = grouped.groupby(denom_keys, dropna=False)["Count"].transform("sum")
-        grouped["Percent"] = np.where(den > 0, (grouped["Count"]/den*100).round(1), 0.0)
+        grouped["Percent"] = np.where(den > 0, (grouped["Count"] / den * 100).round(1), 0.0)
     else:
-        grouped["Percent"] = (grouped["Count"]/total_population*100.0).round(1)
+        grouped["Percent"] = (grouped["Count"] / total_population * 100.0).round(1)
 
     if "County" not in grouping_vars_clean:
         grouped.insert(0, "County", county_label)
@@ -259,16 +322,21 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 
     existing = list(grouped.columns)
     col_order = []
-    if "County" in existing: col_order.append("County")
+    if "County" in existing:
+        col_order.append("County")
     if "County Code" in existing:
         col_order += ["County Code"]
-        if "County Name" in existing: col_order += ["County Name"]
-    for c in ["Region","AgeGroup","Race","Ethnicity","Sex"]:
-        if c in existing and c not in col_order and c in group_fields: col_order.append(c)
-    for c in ["Count","Percent","Year"]:
-        if c in existing: col_order.append(c)
+        if "County Name" in existing:
+            col_order += ["County Name"]
+    for c in ["Region", "AgeGroup", "Race", "Ethnicity", "Sex"]:
+        if c in existing and c not in col_order and c in group_fields:
+            col_order.append(c)
+    for c in ["Count", "Percent", "Year"]:
+        if c in existing:
+            col_order.append(c)
     for c in group_fields:
-        if c in existing and c not in col_order: col_order.append(c)
+        if c in existing and c not in col_order:
+            col_order.append(c)
     return grouped[col_order]
 
 # ──────────────────────────────────────────────────────────────
@@ -277,36 +345,43 @@ def aggregate_multi(df_source: pd.DataFrame, grouping_vars: List[str], year_str:
 def _normalize_token(x: object) -> str:
     s = str(x).strip()
     s = s.replace("–", "-").replace("—", "-")
-    s = re.sub(r"\\s+", "_", s)
-    s = re.sub(r"[^0-9A-Za-z_\\-]+", "", s)
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^0-9A-Za-z_\-]+", "", s)
     return s
 
 def add_concatenated_key_dynamic(df: pd.DataFrame, selected_filters: Dict[str, object], delimiter: str = "_") -> pd.DataFrame:
-    if df is None or df.empty: return df
+    if df is None or df.empty:
+        return df
     group_by = selected_filters.get("group_by", []) or []
     cols_present = set(df.columns)
     key_cols: List[str] = []
-    if {"County Code","County Name"}.issubset(cols_present): key_cols += ["County Code","County Name"]
-    elif "County" in cols_present: key_cols += ["County"]
-    map_ui_to_col = {"Age":"AgeGroup","Race":"Race","Ethnicity":"Ethnicity","Sex":"Sex","County":"County Code","Region":"Region"}
+    if {"County Code", "County Name"}.issubset(cols_present):
+        key_cols += ["County Code", "County Name"]
+    elif "County" in cols_present:
+        key_cols += ["County"]
+    map_ui_to_col = {"Age": "AgeGroup", "Race": "Race", "Ethnicity": "Ethnicity", "Sex": "Sex", "County": "County Code", "Region": "Region"}
     for g in group_by:
         col = map_ui_to_col.get(g, g)
-        if col in cols_present and col not in key_cols and col not in {"County Code","County Name","County"}:
+        if col in cols_present and col not in key_cols and col not in {"County Code", "County Name", "County"}:
             key_cols.append(col)
-    if "Year" in cols_present: key_cols.append("Year")
+    if "Year" in cols_present:
+        key_cols.append("Year")
     out = df.copy()
     for c in key_cols:
         if c in out.columns:
             if pd.api.types.is_numeric_dtype(out[c]):
-                try: out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64").astype(str)
-                except Exception: out[c] = out[c].astype(str)
-            else: out[c] = out[c].astype(str)
+                try:
+                    out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64").astype(str)
+                except Exception:
+                    out[c] = out[c].astype(str)
+            else:
+                out[c] = out[c].astype(str)
     out["ConcatenatedKey"] = out[key_cols].apply(lambda r: delimiter.join(_normalize_token(v) for v in r), axis=1) if key_cols else ""
     prefix_tokens: List[str] = []
-    for sel_key, col_name, label_prefix in [("race","Race",""),("ethnicity","Ethnicity",""),("sex","Sex",""),("region","Region","Region_")]:
+    for sel_key, col_name, label_prefix in [("race", "Race", ""), ("ethnicity", "Ethnicity", ""), ("sex", "Sex", ""), ("region", "Region", "Region_")]:
         if col_name not in cols_present:
             val = selected_filters.get(sel_key)
-            if val and str(val).strip().lower() not in {"all","none"}:
+            if val and str(val).strip().lower() not in {"all", "none"}:
                 token = (label_prefix + _normalize_token(val)) if label_prefix else _normalize_token(val)
                 prefix_tokens.append(token)
     if prefix_tokens:
@@ -333,102 +408,98 @@ def render_release_ticker(releases: List[Tuple[int, str]], speed_seconds: int = 
     st.markdown(html, unsafe_allow_html=True)
 
 # ===== Pivot builder (with duplicate-dimension safety) =====
-def build_pivot_table(df: pd.DataFrame,
-                      rows: List[str], cols: List[str], values: List[str],
-                      agg_count: str = "sum",
-                      percent_mode: str = "Weighted by Count (rows)",
-                      margins: bool = True, flatten: bool = True,
-                      sort_rows: bool = False) -> pd.DataFrame:
-    if df is None or df.empty or not values: 
+def build_pivot_table(
+    df: pd.DataFrame,
+    rows: List[str], cols: List[str], values: List[str],
+    agg_count: str = "sum",
+    percent_mode: str = "Weighted by Count (rows)",
+    margins: bool = True, flatten: bool = True,
+    sort_rows: bool = False
+) -> pd.DataFrame:
+    if df is None or df.empty or not values:
         return pd.DataFrame()
-    
-    # keep only chosen dims that actually exist
+
     rows = [r for r in rows if r in df.columns]
     cols = [c for c in cols if c in df.columns]
 
-    # SAFETY: if caller forgot to de-conflict, drop overlaps from columns
     overlap = sorted(set(rows) & set(cols))
     if overlap:
         cols = [c for c in cols if c not in overlap]
-    
-    # Check if we have at least one grouping dimension (rows or columns)
+
     if not rows and not cols:
         st.warning("⚠️ Pivot table requires at least one row or column dimension.")
         return pd.DataFrame()
-    
+
     pieces = []
-    
+
     # Count
     if "Count" in values and "Count" in df.columns:
-        index_param = rows or None
-        columns_param = cols or None
-        
-        p_cnt = pd.pivot_table(df, 
-                              index=index_param, 
-                              columns=columns_param, 
-                              values="Count",
-                              aggfunc=agg_count, 
-                              margins=margins, 
-                              margins_name="Total",
-                              dropna=False, 
-                              fill_value=0)
+        p_cnt = pd.pivot_table(
+            df,
+            index=(rows or None),
+            columns=(cols or None),
+            values="Count",
+            aggfunc=agg_count,
+            margins=margins,
+            margins_name="Total",
+            dropna=False,
+            fill_value=0,
+        )
         pieces.append(("Count", p_cnt))
-    
+
     # Percent
     if "Percent" in values and "Percent" in df.columns:
         if percent_mode.startswith("Weighted"):
             df2 = df.copy()
             df2["__pct_num"] = df2["Percent"] * df2["Count"] / 100.0
-            
-            index_param = rows or None
-            columns_param = cols or None
-            
-            num = pd.pivot_table(df2, 
-                                index=index_param, 
-                                columns=columns_param, 
-                                values="__pct_num",
-                                aggfunc="sum", 
-                                margins=margins, 
-                                margins_name="Total",
-                                dropna=False, 
-                                fill_value=0)
-            den = pd.pivot_table(df2, 
-                                index=index_param, 
-                                columns=columns_param, 
-                                values="Count",
-                                aggfunc="sum", 
-                                margins=margins, 
-                                margins_name="Total",
-                                dropna=False, 
-                                fill_value=0)
-            with np.errstate(divide='ignore', invalid='ignore'):
+
+            num = pd.pivot_table(
+                df2,
+                index=(rows or None),
+                columns=(cols or None),
+                values="__pct_num",
+                aggfunc="sum",
+                margins=margins,
+                margins_name="Total",
+                dropna=False,
+                fill_value=0,
+            )
+            den = pd.pivot_table(
+                df2,
+                index=(rows or None),
+                columns=(cols or None),
+                values="Count",
+                aggfunc="sum",
+                margins=margins,
+                margins_name="Total",
+                dropna=False,
+                fill_value=0,
+            )
+            with np.errstate(divide="ignore", invalid="ignore"):
                 p_pct = (num / den) * 100.0
                 p_pct = p_pct.fillna(0)
         else:
-            index_param = rows or None
-            columns_param = cols or None
-            
-            p_pct = pd.pivot_table(df, 
-                                  index=index_param, 
-                                  columns=columns_param, 
-                                  values="Percent",
-                                  aggfunc="mean", 
-                                  margins=margins, 
-                                  margins_name="Total",
-                                  dropna=False, 
-                                  fill_value=0)
+            p_pct = pd.pivot_table(
+                df,
+                index=(rows or None),
+                columns=(cols or None),
+                values="Percent",
+                aggfunc="mean",
+                margins=margins,
+                margins_name="Total",
+                dropna=False,
+                fill_value=0,
+            )
         pieces.append(("Percent", p_pct))
 
-    if not pieces: 
+    if not pieces:
         return pd.DataFrame()
 
-    # Combine pieces
     if len(pieces) == 1:
         pivot = pieces[0][1]
     else:
         pivot = pd.concat({name: p for name, p in pieces}, axis=1)
 
-    # Optional sorting by grand total (Count preferred if present)
     if sort_rows and rows:
         try:
             if isinstance(pivot.columns, pd.MultiIndex) and ("Count" in pivot.columns.levels[0]):
@@ -439,18 +510,15 @@ def build_pivot_table(df: pd.DataFrame,
         except Exception:
             pass
 
-    # Flatten columns if requested
     if flatten and isinstance(pivot.columns, pd.MultiIndex):
         pivot.columns = [" | ".join([str(x) for x in tup if str(x) != ""]) for tup in pivot.columns.to_flat_index()]
 
-    # Reset index for a flat CSV-friendly table
     pivot = pivot.reset_index() if rows else pivot.reset_index(drop=False)
-    
-    # Round percents to 1 decimal if present
+
     for col in pivot.columns:
         if isinstance(col, str) and ("Percent" in col or col == "Percent"):
             pivot[col] = pivot[col].astype(float).round(1)
-    
+
     return pivot
 
 # ──────────────────────────────────────────────────────────────
@@ -458,111 +526,106 @@ def build_pivot_table(df: pd.DataFrame,
 # ──────────────────────────────────────────────────────────────
 def _sex_to_q2_token(sex: str) -> str:
     s = str(sex or "").strip().lower()
-    if s == "male": return "S1"
-    if s == "female": return "S2"
+    if s == "male":
+        return "S1"
+    if s == "female":
+        return "S2"
     return "S0"  # All/unknown
 
 def _eth_to_q4_token(eth: str) -> str:
     e = str(eth or "").strip().lower()
-    if e in {"hispanic", "hisp"}: return "E1"
-    if e in {"not hispanic", "non-hispanic", "non hispanic"}: return "E2"
+    if e in {"hispanic", "hisp"}:
+        return "E1"
+    if e in {"not hispanic", "non-hispanic", "non hispanic"}:
+        return "E2"
     return "E0"  # All/unknown
 
-BRACKET_TO_CODE = {v:k for k, v in {
-    1:"0-4",2:"5-9",3:"10-14",4:"15-19",5:"20-24",6:"25-29",7:"30-34",8:"35-39",9:"40-44",
-    10:"45-49",11:"50-54",12:"55-59",13:"60-64",14:"65-69",15:"70-74",16:"75-79",17:"80-84",18:"80+"
+BRACKET_TO_CODE = {v: k for k, v in {
+    1: "0-4", 2: "5-9", 3: "10-14", 4: "15-19", 5: "20-24", 6: "25-29",
+    7: "30-34", 8: "35-39", 9: "40-44", 10: "45-49", 11: "50-54", 12: "55-59",
+    13: "60-64", 14: "65-69", 15: "70-74", 16: "75-79", 17: "80-84", 18: "80+"
 }.items()}
 
 def _age_to_q5_code(row: pd.Series, age_scheme: str) -> int:
-    # Prefer raw Age if available
-    if 'Age' in row and pd.notna(row['Age']):
+    if "Age" in row and pd.notna(row["Age"]):
         try:
-            age_code = int(row['Age'])
+            age_code = int(row["Age"])
             if age_scheme.startswith("CPC") and age_code == 0:
-                # In CPC scheme we want 1–18; keep 0 only if user selects raw
                 return 0
             return age_code
         except Exception:
             pass
-    # Else try AgeGroup label
-    if 'AgeGroup' in row and pd.notna(row['AgeGroup']):
-        lab = str(row['AgeGroup']).strip()
-        # e.g., "0-4", "80+"
-        if lab in BRACKET_TO_CODE: 
+    if "AgeGroup" in row and pd.notna(row["AgeGroup"]):
+        lab = str(row["AgeGroup"]).strip()
+        if lab in BRACKET_TO_CODE:
             return BRACKET_TO_CODE[lab]
-        # try to parse "X-Y"
-        m = re.match(r"^(\\d+)-(\\d+)$", lab)
+        m = re.match(r"^(\d+)-(\d+)$", lab)
         if m:
             lo = int(m.group(1))
-            # Map to CPC coding by lower bound /5 + 1
-            return int(lo/5) + 1
+            return int(lo / 5) + 1
         if lab.endswith("+"):
             return 18
     return 0
 
 def _canon_race(r: str) -> str:
     r = str(r or "").strip()
-    if r in {"Asian","NHOPI"}:
+    if r in {"Asian", "NHOPI"}:
         return "Asian/Pacific Islander"
-    if r in {"White","Black","AIAN"}:
-        return {"White":"White","Black":"Black","AIAN":"American Indian and Alaska Native"}[r]
-    # Pass through others
+    if r in {"White", "Black", "AIAN"}:
+        return {"White": "White", "Black": "Black", "AIAN": "American Indian and Alaska Native"}[r]
     return r
 
-def build_pop_long_q(df_raw: pd.DataFrame,
-                     counties_map: Dict[str,int],
-                     year_val: int,
-                     schema: str = "SAS/POP_LONG_Q (S/E tokens)",
-                     apply_rules: bool = True,
-                     age_scheme: str = "CPC 18 buckets (1–18)",
-                     include_county_cols: bool = True) -> pd.DataFrame:
+def build_pop_long_q(
+    df_raw: pd.DataFrame,
+    counties_map: Dict[str, int],
+    year_val: int,
+    schema: str = "SAS/POP_LONG_Q (S/E tokens)",
+    apply_rules: bool = True,
+    age_scheme: str = "CPC 18 buckets (1–18)",
+    include_county_cols: bool = True,
+) -> pd.DataFrame:
     if df_raw is None or df_raw.empty:
-        return pd.DataFrame(columns=["q2","q3","q4","q1","q5","q7","q8"])
+        return pd.DataFrame(columns=["q2", "q3", "q4", "q1", "q5", "q7", "q8"])
 
     df = df_raw.copy()
 
-    # Ensure County Code/Name
     df = ensure_county_names(df, counties_map)
-    if 'County' in df.columns and 'County Code' not in df.columns:
+    if "County" in df.columns and "County Code" not in df.columns:
         try:
-            df['County Code'] = pd.to_numeric(df['County'], errors='coerce').astype('Int64')
+            df["County Code"] = pd.to_numeric(df["County"], errors="coerce").astype("Int64")
         except Exception:
             pass
 
-    # Apply POP_LONG standard rules (age≠0 and limited race set for 2020+)
     if apply_rules:
-        if int(year_val) >= 2020 and 'Age' in df.columns:
-            df = df[df['Age'] != 0]
-        # Limit race set to White, Black/African American, AIAN, Asian+NHOPI (API)
-        if 'Race' in df.columns:
-            df = df[df['Race'].isin(["White","Black","AIAN","Asian","NHOPI"])]
-            df['Race Canonical'] = df['Race'].map(_canon_race)
+        if int(year_val) >= 2020 and "Age" in df.columns:
+            df = df[df["Age"] != 0]
+        if "Race" in df.columns:
+            df = df[df["Race"].isin(["White", "Black", "AIAN", "Asian", "NHOPI"])]
+            df["Race Canonical"] = df["Race"].map(_canon_race)
         else:
-            df['Race Canonical'] = "All"
+            df["Race Canonical"] = "All"
     else:
-        df['Race Canonical'] = df.get('Race', "All")
+        df["Race Canonical"] = df.get("Race", "All")
 
-    # Prepare tokens
-    df['q1'] = int(year_val)
-    df['q2'] = df.get('Sex', 'All').apply(_sex_to_q2_token)
-    # POP_LONG_Q uses a constant "R" as the Race indicator column (based on legacy SAS). Keep configurable via schema.
-    df['q3'] = 'R' if schema.startswith('SAS') else df['Race Canonical'].astype(str)
-    df['q4'] = df.get('Ethnicity', 'All').apply(_eth_to_q4_token)
-    df['q5'] = df.apply(lambda r: _age_to_q5_code(r, age_scheme), axis=1)
-    df['q7'] = 1
-    df['q8'] = df.get('Count', 0).astype('int64')
+    df["q1"] = int(year_val)
+    df["q2"] = df.get("Sex", "All").apply(_sex_to_q2_token)
+    df["q3"] = "R" if schema.startswith("SAS") else df["Race Canonical"].astype(str)
+    df["q4"] = df.get("Ethnicity", "All").apply(_eth_to_q4_token)
+    df["q5"] = df.apply(lambda r: _age_to_q5_code(r, age_scheme), axis=1)
+    df["q7"] = 1
+    df["q8"] = df.get("Count", 0).astype("int64")
 
-    # Order and attach helpful descriptors for QA
-    keep_cols = ["q2","q3","q4","q1","q5","q7","q8"]
+    keep_cols = ["q2", "q3", "q4", "q1", "q5", "q7", "q8"]
     if include_county_cols:
-        for c in ["County Code","County Name"]:
-            if c in df.columns: keep_cols.append(c)
-    for c in ["Race Canonical","Race","Ethnicity","Sex","Age","AgeGroup"]:
-        if c in df.columns and c not in keep_cols: keep_cols.append(c)
+        for c in ["County Code", "County Name"]:
+            if c in df.columns:
+                keep_cols.append(c)
+    for c in ["Race Canonical", "Race", "Ethnicity", "Sex", "Age", "AgeGroup"]:
+        if c in df.columns and c not in keep_cols:
+            keep_cols.append(c)
 
     out = df[keep_cols].copy()
-    # Final sort for repeatability
-    sort_cols = [c for c in ["County Code","q1","q2","q4","q3","q5"] if c in out.columns]
+    sort_cols = [c for c in ["County Code", "q1", "q2", "q4", "q3", "q5"] if c in out.columns]
     if sort_cols:
         out = out.sort_values(by=sort_cols).reset_index(drop=True)
     return out
@@ -580,12 +643,16 @@ def main():
             except Exception:
                 st.session_state.show_release_ticker = st.checkbox("Show Release Strip", value=st.session_state.show_release_ticker)
         with c2:
-            st.session_state.ticker_speed = st.slider("Ticker speed (secs per loop)", 60, 200, int(st.session_state.ticker_speed), 5, help="Lower = faster • Higher = slower")
+            st.session_state.ticker_speed = st.slider(
+                "Ticker speed (secs per loop)", 60, 200, int(st.session_state.ticker_speed), 5,
+                help="Lower = faster • Higher = slower"
+            )
     if st.session_state.show_release_ticker:
         render_release_ticker(CPC_RELEASES, speed_seconds=st.session_state.ticker_speed)
 
     # ===== Arched header =====
-    st.markdown("""\
+    st.markdown(
+        """
 <div class="hero-arch">
   <svg class="arch-svg" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
     <path d="M10,190 Q600,-150 1190,190" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
@@ -596,13 +663,15 @@ def main():
     <path d="M10,10 Q600,350 1190,10" stroke="#cbd5e1" stroke-width="4" fill="none" stroke-linecap="round"/>
   </svg>
 </div>
-""", unsafe_allow_html=True)
+""",
+        unsafe_allow_html=True,
+    )
 
     # Load form controls
     (years_list, agegroups_list_raw, races_list_raw, counties_map,
      agegroup_map_explicit, agegroup_map_implicit) = frontend_data_loader.load_form_control_data(FORM_CONTROL_PATH)
 
-    # Sidebar (expects "Region" in Group Results By)
+    # Sidebar (expects “Region” in Group Results By)
     choices = render_sidebar_controls(years_list, races_list_raw, counties_map, agegroup_map_implicit, agegroups_list_raw)
 
     # === Pivot controls (sidebar) ===
@@ -620,27 +689,38 @@ def main():
 
         st.session_state.pivot_enable = st.checkbox("Enable pivot", value=st.session_state.pivot_enable)
 
-        dim_options = ["County Name","County Code","Region","AgeGroup","Race","Ethnicity","Sex","Year"]
-        # sensible defaults
+        dim_options = ["County Name", "County Code", "Region", "AgeGroup", "Race", "Ethnicity", "Sex", "Year"]
         default_rows = ["AgeGroup"]
         default_cols = ["Race"]
 
         st.session_state.pivot_rows = st.multiselect("Rows", dim_options, default=st.session_state.pivot_rows or default_rows)
         st.session_state.pivot_cols = st.multiselect("Columns", dim_options, default=st.session_state.pivot_cols or default_cols)
-        st.session_state.pivot_vals = st.multiselect("Values", ["Count","Percent"], default=st.session_state.pivot_vals)
-        st.session_state.pivot_agg = st.selectbox("Aggregation for Count", ["sum","mean","median","max","min"], index=["sum","mean","median","max","min"].index(st.session_state.pivot_agg))
-        st.session_state.pivot_pct_mode = st.selectbox("Percent aggregation", ["Weighted by Count (rows)","Mean (unweighted)"], index=0 if st.session_state.pivot_pct_mode.startswith("Weighted") else 1)
+        st.session_state.pivot_vals = st.multiselect("Values", ["Count", "Percent"], default=st.session_state.pivot_vals)
+        st.session_state.pivot_agg = st.selectbox(
+            "Aggregation for Count",
+            ["sum", "mean", "median", "max", "min"],
+            index=["sum", "mean", "median", "max", "min"].index(st.session_state.pivot_agg),
+        )
+        st.session_state.pivot_pct_mode = st.selectbox(
+            "Percent aggregation",
+            ["Weighted by Count (rows)", "Mean (unweighted)"],
+            index=0 if st.session_state.pivot_pct_mode.startswith("Weighted") else 1,
+        )
         st.session_state.pivot_totals = st.checkbox("Show totals (margins)", value=st.session_state.pivot_totals)
         st.session_state.pivot_flatten = st.checkbox("Flatten headers for CSV", value=st.session_state.pivot_flatten)
         st.session_state.pivot_sort_rows = st.checkbox("Sort rows by grand total (desc)", value=st.session_state.pivot_sort_rows)
-        st.session_state.pivot_export_mode = st.radio("CSV download includes", ["Raw","Pivot","Both"], index=["Raw","Pivot","Both"].index(st.session_state.pivot_export_mode))
+        st.session_state.pivot_export_mode = st.radio(
+            "CSV download includes", ["Raw", "Pivot", "Both"],
+            index=["Raw", "Pivot", "Both"].index(st.session_state.pivot_export_mode),
+        )
 
-        # NEW: warn + compute effective (de-conflicted) selections
         dups = sorted(set(st.session_state.pivot_rows) & set(st.session_state.pivot_cols))
         if dups:
-            st.warning("⚠️ Rows and Columns cannot share the same field(s): **{}**. "
-                       "For preview/export, these will be removed from **Columns**."
-                       .format(", ".join(dups)))
+            st.warning(
+                "⚠️ Rows and Columns cannot share the same field(s): **{}**. "
+                "For preview/export, these will be removed from **Columns**."
+                .format(", ".join(dups))
+            )
             st.session_state["pivot_rows_eff"] = list(st.session_state.pivot_rows)
             st.session_state["pivot_cols_eff"] = [c for c in st.session_state.pivot_cols if c not in dups]
         else:
@@ -652,13 +732,16 @@ def main():
     c1, b1, c2, b2, c3, b3, c4 = st.columns([1, 0.07, 1, 0.07, 1, 0.07, 1])
     with c1:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(years_list)}</div><div class="metric-label">Years Available</div></div>""", unsafe_allow_html=True)
-    with b1: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
+    with b1:
+        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c2:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(counties_map)}</div><div class="metric-label">Illinois Counties</div></div>""", unsafe_allow_html=True)
-    with b2: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
+    with b2:
+        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c3:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(races_list_raw)}</div><div class="metric-label">Race Categories</div></div>""", unsafe_allow_html=True)
-    with b3: st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
+    with b3:
+        st.markdown('<div class="kpi-brick"></div>', unsafe_allow_html=True)
     with c4:
         st.markdown(f"""<div class="metric-card"><div class="metric-value">{len(agegroups_list_raw)}</div><div class="metric-label">Age Groups</div></div>""", unsafe_allow_html=True)
 
@@ -680,7 +763,7 @@ def main():
     with right_col:
         display_census_links()
 
-    # State
+    # State defaults
     st.session_state.setdefault("report_df", pd.DataFrame())
     st.session_state.setdefault("pivot_df", pd.DataFrame())
     st.session_state.setdefault("selected_filters", {})
@@ -689,9 +772,11 @@ def main():
     # Generate
     if go:
         if not choices["selected_years"]:
-            st.warning("⚠️ Please select at least one year."); st.stop()
+            st.warning("⚠️ Please select at least one year.")
+            st.stop()
         if not choices["selected_counties"]:
-            st.warning("⚠️ Please select at least one county."); st.stop()
+            st.warning("⚠️ Please select at least one county.")
+            st.stop()
 
         st.session_state.selected_filters = {
             "years": [str(y) for y in choices["selected_years"]],
@@ -705,7 +790,8 @@ def main():
         }
 
         def _county_label_for_all():
-            return choices["selected_region"] or "All Counties" if "All" in choices["selected_counties"] else "Selected Counties"
+            return (choices["selected_region"] or
+                    ("All Counties" if "All" in choices["selected_counties"] else "Selected Counties"))
 
         with st.spinner("🔄 Processing data…"):
             def build_block(county_list: List[str], county_label: str) -> pd.DataFrame:
@@ -724,7 +810,7 @@ def main():
                         selected_agegroup=choices["agegroup_for_backend"],
                         custom_age_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                     )
-                    # Hard region filter to reflect exact selection in output
+                    # Region filter reflects selection in output
                     if choices["selected_region"] and choices["selected_region"] != "None":
                         df_src = attach_region_column(df_src, counties_map)
                         df_src = df_src[df_src["Region"] == choices["selected_region"]]
@@ -739,23 +825,31 @@ def main():
                         custom_ranges=choices["custom_ranges"] if choices["enable_custom_ranges"] else [],
                         agegroup_map_implicit=agegroup_map_implicit,
                     )
-                    if not block.empty: frames.append(block)
+                    if not block.empty:
+                        frames.append(block)
                 return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
             all_frames: List[pd.DataFrame] = []
-            combined = build_block(["All"], _county_label_for_all()) if "All" in choices["selected_counties"] else build_block(choices["selected_counties"], "Selected Counties")
-            if not combined.empty: all_frames.append(combined)
+            if "All" in choices["selected_counties"]:
+                combined = build_block(["All"], _county_label_for_all())
+            else:
+                combined = build_block(choices["selected_counties"], "Selected Counties")
+            if not combined.empty:
+                all_frames.append(combined)
 
             if choices["include_breakdown"] and "All" not in choices["selected_counties"]:
                 for cty in choices["selected_counties"]:
                     cdf = build_block([cty], cty)
-                    if not cdf.empty: all_frames.append(cdf)
+                    if not cdf.empty:
+                        all_frames.append(cdf)
 
             st.session_state.report_df = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
             st.session_state.report_df = ensure_county_names(st.session_state.report_df, counties_map)
 
             if not st.session_state.report_df.empty:
-                st.session_state.report_df = add_concatenated_key_dynamic(st.session_state.report_df, st.session_state.selected_filters, delimiter="_")
+                st.session_state.report_df = add_concatenated_key_dynamic(
+                    st.session_state.report_df, st.session_state.selected_filters, delimiter="_"
+                )
                 cols = st.session_state.report_df.columns.tolist()
                 if "ConcatenatedKey" in cols:
                     cols = ["ConcatenatedKey"] + [c for c in cols if c != "ConcatenatedKey"]
@@ -772,16 +866,15 @@ def main():
                     percent_mode=st.session_state.pivot_pct_mode,
                     margins=st.session_state.pivot_totals,
                     flatten=st.session_state.pivot_flatten,
-                    sort_rows=st.session_state.pivot_sort_rows
+                    sort_rows=st.session_state.pivot_sort_rows,
                 )
             else:
                 st.session_state.pivot_df = pd.DataFrame()
 
-            # ====== NEW: Build tokenized POP_LONG_Q if enabled ======
+            # ====== Build tokenized POP_LONG_Q if enabled ======
             st.session_state.token_df = pd.DataFrame()
             if choices.get("tokenization", {}).get("enabled", False):
                 token_frames = []
-                # Tokenization always uses base ages (no aggregation) to keep AGEGRP codes intact
                 for year in choices["selected_years"]:
                     df_src = backend_main_processing.process_population_data(
                         data_folder=DATA_FOLDER,
@@ -789,12 +882,12 @@ def main():
                         counties_map=counties_map,
                         selected_years=[year],
                         selected_counties=(choices["selected_counties"] if "All" not in choices["selected_counties"] else ["All"]),
-                        selected_race="All",              # use full set; rules applied downstream
+                        selected_race="All",
                         selected_ethnicity="All",
                         selected_sex="All",
                         selected_region=choices["selected_region"],
-                        selected_agegroup=None,            # <-- keep Age as 0..18 from source
-                        custom_age_ranges=[],              # no custom ranges
+                        selected_agegroup=None,
+                        custom_age_ranges=[],
                     )
                     if choices["selected_region"] and choices["selected_region"] != "None":
                         df_src = attach_region_column(df_src, counties_map)
@@ -802,23 +895,21 @@ def main():
                     if df_src is None or df_src.empty:
                         continue
 
-                    # Ensure County Code present for stable grouping
                     df_src = ensure_county_names(df_src, counties_map)
-                    if 'County Code' not in df_src.columns and 'County' in df_src.columns:
-                        df_src['County Code'] = pd.to_numeric(df_src['County'], errors='coerce').astype('Int64')
+                    if "County Code" not in df_src.columns and "County" in df_src.columns:
+                        df_src["County Code"] = pd.to_numeric(df_src["County"], errors="coerce").astype("Int64")
 
-                    # Group to Year × County × Sex × Ethnicity × Race × Age
-                    group_cols = [c for c in ['County Code','Sex','Ethnicity','Race','Age'] if c in df_src.columns]
-                    if not group_cols or 'Count' not in df_src.columns:
+                    group_cols = [c for c in ["County Code", "Sex", "Ethnicity", "Race", "Age"] if c in df_src.columns]
+                    if not group_cols or "Count" not in df_src.columns:
                         continue
-                    g = df_src.groupby(group_cols, dropna=False)['Count'].sum().reset_index()
+                    g = df_src.groupby(group_cols, dropna=False)["Count"].sum().reset_index()
 
                     token_df = build_pop_long_q(
                         g, counties_map, year_val=year,
-                        schema=choices['tokenization']['schema'],
-                        apply_rules=choices['tokenization']['apply_pop_long_rules'],
-                        age_scheme=choices['tokenization']['age_scheme'],
-                        include_county_cols=choices['tokenization']['include_county_cols']
+                        schema=choices["tokenization"]["schema"],
+                        apply_rules=choices["tokenization"]["apply_pop_long_rules"],
+                        age_scheme=choices["tokenization"]["age_scheme"],
+                        include_county_cols=choices["tokenization"]["include_county_cols"],
                     )
                     if not token_df.empty:
                         token_frames.append(token_df)
@@ -846,18 +937,18 @@ def main():
             f"# Group By: {', '.join(st.session_state.selected_filters.get('group_by', [])) or 'None'}",
             f"# Total Records: {len(st.session_state.report_df)}",
             f"# Total Population: {st.session_state.report_df['Count'].sum():,}" if 'Count' in st.session_state.report_df.columns else "# Total Population: N/A",
-            "#", "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.", "#"
+            "#",
+            "# Note: Data are official U.S. Census Bureau estimates and may be subject to error.",
+            "#",
         ]
         raw_csv = "\n".join(meta) + "\n" + st.session_state.report_df.to_csv(index=False)
 
-        # Download buttons based on export mode
-        show_raw = (st.session_state.pivot_export_mode in {"Raw","Both"}) or not st.session_state.pivot_enable
-        show_pvt = st.session_state.pivot_enable and (st.session_state.pivot_export_mode in {"Pivot","Both"})
+        show_raw = (st.session_state.pivot_export_mode in {"Raw", "Both"}) or not st.session_state.pivot_enable
+        show_pvt = st.session_state.pivot_enable and (st.session_state.pivot_export_mode in {"Pivot", "Both"})
 
         if show_raw:
             st.download_button("📥 Download CSV (Raw)", data=raw_csv, file_name="illinois_population_data.csv", mime="text/csv")
 
-        # Pivot preview & download
         if show_pvt and not st.session_state.pivot_df.empty:
             st.markdown("### 🔁 Pivot Preview")
             st.dataframe(st.session_state.pivot_df, use_container_width=True)
@@ -873,7 +964,7 @@ def main():
                 f"# Percent mode: {st.session_state.pivot_pct_mode}",
                 f"# Totals: {'Yes' if st.session_state.pivot_totals else 'No'}",
                 f"# Flatten headers: {'Yes' if st.session_state.pivot_flatten else 'No'}",
-                "#"
+                "#",
             ]
             p_csv = "\n".join(pmeta) + "\n" + st.session_state.pivot_df.to_csv(index=False)
             st.download_button("📥 Download CSV (Pivot)", data=p_csv, file_name="illinois_population_pivot.csv", mime="text/csv")
@@ -887,14 +978,14 @@ def main():
         tmeta = [
             "# POP_LONG_Q export (tokenized)",
             f"# Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"# q2: Sex token (S1=Male, S2=Female, S0=All)",
-            f"# q3: Race indicator ({'constant R' if choices.get('tokenization',{}).get('schema','').startswith('SAS') else 'race label'})",
-            f"# q4: Ethnicity token (E1=Hispanic, E2=Not Hispanic, E0=All)",
-            f"# q1: Calendar year",
-            f"# q5: Age code (CPC 1–18)",
-            f"# q7: 1 (indicator)",
-            f"# q8: population count",
-            "#"
+            "# q2: Sex token (S1=Male, S2=Female, S0=All)",
+            f"# q3: {'constant R' if choices.get('tokenization',{}).get('schema','').startswith('SAS') else 'race label'}",
+            "# q4: Ethnicity token (E1=Hispanic, E2=Not Hispanic, E0=All)",
+            "# q1: Calendar year",
+            "# q5: Age code (CPC 1–18)",
+            "# q7: 1 (indicator)",
+            "# q8: population count",
+            "#",
         ]
         t_csv = "\n".join(tmeta) + "\n" + st.session_state.token_df.to_csv(index=False)
         st.download_button("📥 Download CSV (POP_LONG_Q)", data=t_csv, file_name="pop_long_q.csv", mime="text/csv")
